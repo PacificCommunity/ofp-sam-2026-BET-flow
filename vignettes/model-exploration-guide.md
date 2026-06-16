@@ -16,8 +16,12 @@ The local R session registers and launches jobs. The actual MFCL work runs
 inside the Docker image:
 
 ```text
-ghcr.io/pacificcommunity/tuna-flow:latest
+ghcr.io/pacificcommunity/tuna-flow:v1.2
 ```
+
+This tag was built by GitHub Actions run `27601366609` from Docker image commit
+`3b3677a6c73fb7fd184af6eea39efd2364931ad1` and resolves to
+`sha256:192445f72e92fd1d92932468384913d44e2889b3fd0ec3f3c17c87376e12cdd3`.
 
 This repository contains the workflow logic. Assessment-specific MFCL inputs are
 kept in separate input-bundle repositories so the same workflow can be reused

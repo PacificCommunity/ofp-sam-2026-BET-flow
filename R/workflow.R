@@ -87,7 +87,7 @@ flow_source_ref <- flow_env_any(c("FLOW_SOURCE_REF", "TUNA_FLOW_SOURCE_REF"), "m
 flow_source_path <- flow_env_any(c("FLOW_SOURCE_PATH", "TUNA_FLOW_SOURCE_PATH", "SOURCE_PATH"), "")
 flow_docker_image <- flow_env_any(
   c("FLOW_DOCKER_IMAGE", "TUNA_FLOW_DOCKER_IMAGE"),
-  "ghcr.io/pacificcommunity/tuna-flow:latest"
+  "ghcr.io/pacificcommunity/tuna-flow:v1.2"
 )
 flow_task_codes <- setNames(paste(flow_task_prefix, c("base", "sensitivity", "diagnostics", "plot", "report"), sep = "-"), c(
   "base", "sensitivity", "diagnostics", "plot", "report"

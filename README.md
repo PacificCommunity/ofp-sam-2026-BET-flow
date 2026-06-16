@@ -10,7 +10,7 @@ using:
 - `PacificCommunity/ofp-sam-bet2026-inputs`
 - `mfcl/inputs/2023_4region_1007`
 - `/home/mfcl/mfclo64` from the Docker image
-- `ghcr.io/pacificcommunity/tuna-flow:latest`
+- `ghcr.io/pacificcommunity/tuna-flow:v1.2`
 
 The starter flow runs one base model, several explicit sensitivity recipes
 (`FixM`, `FixVB`, `Sel4`, `IndexCvHalf`), jitter-style diagnostics, a depletion

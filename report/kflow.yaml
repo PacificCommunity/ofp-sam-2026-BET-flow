@@ -1,7 +1,7 @@
 name: tuna-flow-report
 description: Render a Quarto report from selected tuna assessment plot outputs.
 command: bash run.sh
-docker_image: ghcr.io/pacificcommunity/tuna-flow:latest
+docker_image: ghcr.io/pacificcommunity/tuna-flow:v1.2
 resources:
   cpus: 2
   memory: 12GB
