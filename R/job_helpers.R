@@ -568,10 +568,26 @@ kflow_compact_outputs <- function(out_dir, keep = c("model_payload.rds", "model-
   if (!kflow_bool("COMPACT_OUTPUTS", TRUE)) {
     return(invisible(FALSE))
   }
-  entries <- list.files(out_dir, full.names = TRUE, all.files = TRUE, no.. = TRUE)
-  remove <- entries[!basename(entries) %in% keep]
+  files <- list.files(out_dir, full.names = TRUE, recursive = TRUE, all.files = TRUE, no.. = TRUE)
+  if (!length(files)) {
+    return(invisible(TRUE))
+  }
+  out_root <- normalizePath(out_dir, winslash = "/", mustWork = FALSE)
+  rel <- substring(normalizePath(files, winslash = "/", mustWork = FALSE), nchar(out_root) + 2L)
+  rel <- gsub("\\\\", "/", rel)
+  keep <- gsub("\\\\", "/", keep)
+  keep_paths <- keep[grepl("/", keep, fixed = TRUE)]
+  keep_names <- keep[!grepl("/", keep, fixed = TRUE)]
+  keep_file <- rel %in% keep_paths | basename(files) %in% keep_names
+  remove <- files[!keep_file]
   if (length(remove)) {
-    unlink(remove, recursive = TRUE, force = TRUE)
+    unlink(remove, force = TRUE)
+  }
+  dirs <- rev(list.dirs(out_dir, full.names = TRUE, recursive = TRUE))
+  for (dir in dirs) {
+    if (!length(list.files(dir, all.files = TRUE, no.. = TRUE))) {
+      unlink(dir, recursive = TRUE, force = TRUE)
+    }
   }
   invisible(TRUE)
 }

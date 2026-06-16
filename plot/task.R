@@ -83,3 +83,9 @@ utils::write.csv(plot_summary, file.path(ctx$out_dir, "plot-summary.csv"), row.n
 writeLines(capture.output(print(plot_summary)), file.path(ctx$out_dir, "plot-summary.txt"))
 kflow_write_registry(ctx$out_dir, "plot")
 kflow_write_summary(ctx$out_dir, "plot")
+plot_keep <- c("plot-summary.csv", "model-registry.csv")
+plot_keep <- c(plot_keep, if (nzchar(report_figure)) report_figure else "model-exploration-overview.svg")
+kflow_compact_outputs(
+  ctx$out_dir,
+  keep = plot_keep
+)

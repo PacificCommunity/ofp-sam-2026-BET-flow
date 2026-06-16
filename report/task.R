@@ -184,3 +184,11 @@ utils::write.csv(report_summary, file.path(ctx$out_dir, "report-summary.csv"), r
 writeLines(capture.output(print(report_summary)), file.path(ctx$out_dir, "report-summary.txt"))
 kflow_write_registry(ctx$out_dir, "report")
 kflow_write_summary(ctx$out_dir, "report")
+kflow_compact_outputs(
+  ctx$out_dir,
+  keep = c(
+    report_file,
+    "report-summary.csv",
+    "model-registry.csv"
+  )
+)
