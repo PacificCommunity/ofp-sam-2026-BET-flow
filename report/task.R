@@ -33,7 +33,7 @@ utils::write.csv(summaries, file.path(ctx$out_dir, "report-input-summaries.csv")
 
 template_dir_setting <- kflow_env("REPORT_TEMPLATE_DIR", "templates/tuna-assessment")
 template_main <- kflow_env("REPORT_TEMPLATE_MAIN", "assessment.qmd")
-render_format <- kflow_env("REPORT_RENDER_FORMAT", "html")
+render_format <- kflow_env("REPORT_RENDER_FORMAT", "pdf")
 title <- kflow_env("REPORT_TITLE", "Tuna Kflow report")
 report_file_stem <- kflow_env("REPORT_FILE_STEM", "tuna-flow-report")
 quarto_available <- nzchar(Sys.which("quarto"))
