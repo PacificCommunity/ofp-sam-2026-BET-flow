@@ -41,6 +41,13 @@ prepare_runtime_package_update() {
   fi
 }
 
+install_runtime_cran_dependencies() {
+  case "${KFLOW_RUNTIME_PACKAGES:-}" in
+    *mfclrtmb=*)
+      Rscript -e 'repos <- getOption("repos"); if (!length(repos) || identical(unname(repos[["CRAN"]]), "@CRAN@")) options(repos = c(CRAN = "https://cloud.r-project.org")); missing <- setdiff(c("TMB", "RTMB"), rownames(utils::installed.packages())); if (length(missing)) utils::install.packages(missing, dependencies = TRUE)' ;;
+  esac
+}
+
 run_runtime_package_update() {
   local update_status
   if [[ -z "${R_LIBS_USER:-}" ]]; then
@@ -63,6 +70,14 @@ run_runtime_package_update() {
   echo "[kflow-runtime-update] Runtime package update failed; continuing with bundled packages." >&2
 }
 
+verify_runtime_packages() {
+  case "${KFLOW_RUNTIME_REQUIRE_PRIVATE_PACKAGES:-false}" in
+    1|true|TRUE|yes|YES|on|ON) ;;
+    *) return 0 ;;
+  esac
+  Rscript -e 'spec <- Sys.getenv("KFLOW_RUNTIME_PACKAGES"); parts <- trimws(strsplit(spec, ",", fixed = TRUE)[[1]]); pkgs <- sub("=.*$", "", parts[nzchar(parts)]); missing <- pkgs[!vapply(pkgs, requireNamespace, logical(1), quietly = TRUE)]; if (length(missing)) { message("[kflow-runtime-update] Required runtime package(s) unavailable after update: ", paste(missing, collapse = ", ")); quit(save = "no", status = 44) }'
+}
+
 if [[ -n "${KFLOW_JOB_CONFIG_FILE:-}" ]]; then
   load_env "$KFLOW_JOB_CONFIG_FILE"
 elif [[ -f job.env ]]; then
@@ -73,6 +88,8 @@ fi
 
 mkdir -p "${OUTPUT_DIR:-outputs}" "${INPUT_DIR:-inputs}"
 prepare_runtime_package_update
+install_runtime_cran_dependencies
 run_runtime_package_update
+verify_runtime_packages
 drop_runtime_tokens
 Rscript task.R
