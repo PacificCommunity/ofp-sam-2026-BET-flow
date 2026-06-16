@@ -60,7 +60,11 @@ mfclshiny_status <- if (file.exists(mfclshiny_status_file)) {
 } else {
   ""
 }
-report_figure <- if (file.exists(file.path(ctx$out_dir, "report-figures", "depletion-smoke.png"))) {
+report_figure <- if (file.exists(file.path(ctx$out_dir, "report-figures", "key-quantities-smoke.png"))) {
+  "report-figures/key-quantities-smoke.png"
+} else if (file.exists(file.path(ctx$out_dir, "key-quantities-smoke.png"))) {
+  "key-quantities-smoke.png"
+} else if (file.exists(file.path(ctx$out_dir, "report-figures", "depletion-smoke.png"))) {
   "report-figures/depletion-smoke.png"
 } else if (file.exists(file.path(ctx$out_dir, "depletion-smoke.png"))) {
   "depletion-smoke.png"

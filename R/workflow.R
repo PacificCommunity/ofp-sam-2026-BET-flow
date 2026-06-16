@@ -510,13 +510,13 @@ common_env <- function(rows) {
   rows$SMOKE_INPUT_PAR <- if ("SMOKE_INPUT_PAR" %in% names(rows)) rows$SMOKE_INPUT_PAR else "last"
   rows$SMOKE_OUTPUT_PAR <- if ("SMOKE_OUTPUT_PAR" %in% names(rows)) rows$SMOKE_OUTPUT_PAR else ""
   rows$SMOKE_FEVALS <- if ("SMOKE_FEVALS" %in% names(rows)) rows$SMOKE_FEVALS else "1"
-  rows$KFLOW_REQUIRE_MFCL_DERIVED <- if ("KFLOW_REQUIRE_MFCL_DERIVED" %in% names(rows)) {
-    rows$KFLOW_REQUIRE_MFCL_DERIVED
+  rows$MFCL_REQUIRE_DERIVED <- if ("MFCL_REQUIRE_DERIVED" %in% names(rows)) {
+    rows$MFCL_REQUIRE_DERIVED
   } else {
     ifelse(tolower(rows$MFCL_BACKEND) == "mfcl_smoke", "true", "false")
   }
-  rows$KFLOW_REQUIRE_KEY_QUANTITIES <- if ("KFLOW_REQUIRE_KEY_QUANTITIES" %in% names(rows)) {
-    rows$KFLOW_REQUIRE_KEY_QUANTITIES
+  rows$MFCL_REQUIRE_KEY_QUANTITIES <- if ("MFCL_REQUIRE_KEY_QUANTITIES" %in% names(rows)) {
+    rows$MFCL_REQUIRE_KEY_QUANTITIES
   } else {
     ifelse(tolower(rows$MFCL_BACKEND) == "mfcl_smoke", "true", "false")
   }

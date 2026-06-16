@@ -591,6 +591,9 @@ kflow_try_build_mfclshiny_payload <- function(model_dir, out_dir, log_file = NUL
   }
   writeLines(status, file.path(out_dir, "model-payload-status.txt"))
   kflow_note("Model payload status: ", status, log_file = log_file)
+  if (file.exists(payload_file)) {
+    file.copy(payload_file, file.path(out_dir, "model_payload.rds"), overwrite = TRUE)
+  }
   file.exists(payload_file)
 }
 
@@ -617,6 +620,211 @@ kflow_mfclshiny_payload_env <- function() {
   }, error = function(e) NULL)
 }
 
+kflow_array_to_df <- function(x, value_col = "data") {
+  out <- tryCatch(as.data.frame(x), error = function(e) NULL)
+  if (!is.null(out) && nrow(out) > 0 && value_col %in% names(out)) {
+    return(out)
+  }
+
+  d <- dim(x)
+  if (is.null(d) || !length(d)) {
+    return(data.frame(data = suppressWarnings(as.numeric(x)), stringsAsFactors = FALSE))
+  }
+
+  dn <- tryCatch(dimnames(x), error = function(e) NULL)
+  if (is.null(dn)) {
+    dn <- vector("list", length(d))
+  }
+  if (length(dn) < length(d)) {
+    dn <- c(dn, vector("list", length(d) - length(dn)))
+  } else if (length(dn) > length(d)) {
+    dn <- dn[seq_along(d)]
+  }
+
+  dim_cols <- names(dn)
+  if (is.null(dim_cols) || length(dim_cols) != length(d) || any(!nzchar(dim_cols))) {
+    dim_cols <- c("age", "year", "unit", "season", "area", "iter")[seq_along(d)]
+    missing <- is.na(dim_cols)
+    dim_cols[missing] <- paste0("dim", which(missing))
+  }
+
+  grid <- expand.grid(lapply(d, seq_len), KEEP.OUT.ATTRS = FALSE, stringsAsFactors = FALSE)
+  names(grid) <- dim_cols
+  for (i in seq_along(d)) {
+    labels <- dn[[i]]
+    if (is.null(labels) || length(labels) != d[[i]]) {
+      labels <- as.character(seq_len(d[[i]]))
+    } else {
+      labels <- as.character(labels)
+    }
+    grid[[dim_cols[[i]]]] <- labels[grid[[dim_cols[[i]]]]]
+  }
+
+  vals <- suppressWarnings(as.numeric(c(x)))
+  expected_n <- prod(d)
+  if (length(vals) != expected_n) {
+    vals <- rep(NA_real_, expected_n)
+  }
+  grid[[value_col]] <- vals
+  grid
+}
+
+kflow_extract_yearly_sum <- function(slot_obj, scale = 1) {
+  slot_df <- tryCatch(kflow_array_to_df(slot_obj), error = function(e) NULL)
+  if (is.null(slot_df) || !nrow(slot_df) || !"year" %in% names(slot_df) || !"data" %in% names(slot_df)) {
+    return(NULL)
+  }
+  slot_df$year <- suppressWarnings(as.numeric(slot_df$year))
+  slot_df$data <- suppressWarnings(as.numeric(slot_df$data))
+  slot_df <- slot_df[is.finite(slot_df$year) & is.finite(slot_df$data), , drop = FALSE]
+  if (!nrow(slot_df)) {
+    return(NULL)
+  }
+  out <- stats::aggregate(data ~ year, data = slot_df, FUN = sum)
+  out$data <- out$data / scale
+  out
+}
+
+kflow_extract_rep_timeseries_fallback <- function(rep_obj, scenario = NA_character_, log_file = NULL) {
+  bio_fish <- tryCatch(kflow_array_to_df(slot(rep_obj, "adultBiomass")), error = function(e) NULL)
+  bio_nofish <- tryCatch(kflow_array_to_df(slot(rep_obj, "adultBiomass_nofish")), error = function(e) NULL)
+  if (is.null(bio_fish) || is.null(bio_nofish)) {
+    return(data.frame())
+  }
+  needed <- c("year", "season", "data")
+  if (!all(needed %in% names(bio_fish)) || !all(needed %in% names(bio_nofish))) {
+    return(data.frame())
+  }
+
+  for (col in needed) {
+    bio_fish[[col]] <- suppressWarnings(as.numeric(bio_fish[[col]]))
+    bio_nofish[[col]] <- suppressWarnings(as.numeric(bio_nofish[[col]]))
+  }
+  bio_fish <- bio_fish[is.finite(bio_fish$year) & is.finite(bio_fish$season) & is.finite(bio_fish$data), , drop = FALSE]
+  bio_nofish <- bio_nofish[is.finite(bio_nofish$year) & is.finite(bio_nofish$season) & is.finite(bio_nofish$data), , drop = FALSE]
+  if (!nrow(bio_fish) || !nrow(bio_nofish)) {
+    return(data.frame())
+  }
+
+  bio_fish <- stats::aggregate(data ~ year + season, data = bio_fish, FUN = sum)
+  names(bio_fish)[names(bio_fish) == "data"] <- "bio_fish"
+  bio_nofish <- stats::aggregate(data ~ year + season, data = bio_nofish, FUN = sum)
+  names(bio_nofish)[names(bio_nofish) == "data"] <- "bio_nofish"
+  merged <- merge(bio_fish, bio_nofish, by = c("year", "season"), all = FALSE)
+  if (!nrow(merged)) {
+    return(data.frame())
+  }
+
+  merged$depletion <- merged$bio_fish / pmax(merged$bio_nofish, .Machine$double.eps)
+  dep <- stats::aggregate(depletion ~ year, data = merged, FUN = function(x) mean(x, na.rm = TRUE))
+  sp <- stats::aggregate(bio_fish ~ year, data = merged, FUN = function(x) mean(x, na.rm = TRUE) / 1e3)
+  names(sp)[names(sp) == "bio_fish"] <- "spawning_potential"
+  out <- merge(dep, sp, by = "year", all = FALSE)
+
+  rec_df <- NULL
+  for (slot_name in c("rec_region", "eq_rec", "rec")) {
+    rec_df <- tryCatch(
+      kflow_extract_yearly_sum(slot(rep_obj, slot_name), scale = if (identical(slot_name, "rec")) 1 else 1e6),
+      error = function(e) NULL
+    )
+    if (!is.null(rec_df) && nrow(rec_df)) {
+      break
+    }
+  }
+  if (!is.null(rec_df) && nrow(rec_df)) {
+    names(rec_df)[names(rec_df) == "data"] <- "recruitment"
+    out <- merge(out, rec_df, by = "year", all = TRUE)
+  }
+
+  fm_df <- tryCatch(kflow_array_to_df(slot(rep_obj, "fm")), error = function(e) NULL)
+  popn_df <- tryCatch(kflow_array_to_df(slot(rep_obj, "popN")), error = function(e) NULL)
+  used_fm <- FALSE
+  if (!is.null(fm_df) && !is.null(popn_df) && nrow(fm_df) && nrow(popn_df)) {
+    fm_df$data <- suppressWarnings(as.numeric(fm_df$data))
+    popn_df$data <- suppressWarnings(as.numeric(popn_df$data))
+    popn_df$N <- popn_df$data
+    popn_df$data <- NULL
+    numeric_cols <- intersect(c("age", "year", "unit", "season", "area", "iter"), union(names(fm_df), names(popn_df)))
+    for (col in numeric_cols) {
+      if (col %in% names(fm_df)) {
+        fm_df[[col]] <- suppressWarnings(as.numeric(fm_df[[col]]))
+      }
+      if (col %in% names(popn_df)) {
+        popn_df[[col]] <- suppressWarnings(as.numeric(popn_df[[col]]))
+      }
+    }
+    join_cols <- intersect(c("age", "year", "unit", "season", "area", "iter"), intersect(names(fm_df), names(popn_df)))
+    if (all(c("year", "season") %in% join_cols)) {
+      fm_popn <- merge(fm_df, popn_df, by = join_cols, all = FALSE)
+      fm_popn <- fm_popn[
+        is.finite(fm_popn$year) & is.finite(fm_popn$season) &
+          is.finite(fm_popn$data) & is.finite(fm_popn$N),
+        ,
+        drop = FALSE
+      ]
+      if (nrow(fm_popn)) {
+        fm_popn$catch <- fm_popn$data * fm_popn$N
+        yearly <- stats::aggregate(
+          cbind(total_catch = catch, total_N = N) ~ year + season,
+          data = fm_popn,
+          FUN = sum
+        )
+        if (nrow(yearly)) {
+          yearly$harvest_rate <- yearly$total_catch / pmax(yearly$total_N, .Machine$double.eps)
+          yearly$inst_F <- -log(pmax(1 - yearly$harvest_rate, 0.001))
+          fm_year <- stats::aggregate(inst_F ~ year, data = yearly, FUN = sum)
+          names(fm_year)[names(fm_year) == "inst_F"] <- "fishing_mortality"
+          out <- merge(out, fm_year, by = "year", all = TRUE)
+          used_fm <- TRUE
+        }
+      }
+    }
+  }
+  if (!used_fm && !is.null(fm_df) && nrow(fm_df) && all(c("year", "data") %in% names(fm_df))) {
+    fm_df$year <- suppressWarnings(as.numeric(fm_df$year))
+    fm_df$data <- suppressWarnings(as.numeric(fm_df$data))
+    fm_df <- fm_df[is.finite(fm_df$year) & is.finite(fm_df$data), , drop = FALSE]
+    if (nrow(fm_df)) {
+      fm_year <- stats::aggregate(data ~ year, data = fm_df, FUN = function(x) mean(x, na.rm = TRUE))
+      names(fm_year)[names(fm_year) == "data"] <- "fishing_mortality"
+      out <- merge(out, fm_year, by = "year", all = TRUE)
+    }
+  }
+
+  out$scenario <- scenario
+  out$peel <- 0L
+  attr(out, "kflow_derived_source") <- "mfcl_payload_rep_timeseries_fallback"
+  out
+}
+
+kflow_write_payload_debug_summary <- function(payload_file, out_dir) {
+  payload <- tryCatch(readRDS(payload_file), error = function(e) NULL)
+  rep_obj <- tryCatch(payload$data$RepOut, error = function(e) NULL)
+  slots <- c("adultBiomass", "adultBiomass_nofish", "rec_region", "eq_rec", "rec", "fm", "popN")
+  rows <- lapply(slots, function(slot_name) {
+    slot_obj <- tryCatch(slot(rep_obj, slot_name), error = function(e) e)
+    as_df <- if (!inherits(slot_obj, "error")) tryCatch(as.data.frame(slot_obj), error = function(e) e) else slot_obj
+    fallback <- if (!inherits(slot_obj, "error")) tryCatch(kflow_array_to_df(slot_obj), error = function(e) e) else slot_obj
+    data.frame(
+      payload_file = basename(payload_file),
+      rep_class = paste(class(rep_obj), collapse = "/"),
+      slot = slot_name,
+      slot_class = paste(class(slot_obj), collapse = "/"),
+      slot_dim = if (!inherits(slot_obj, "error")) paste(dim(slot_obj), collapse = "x") else "",
+      as_data_frame_ok = !inherits(as_df, "error"),
+      as_data_frame_rows = if (!inherits(as_df, "error")) nrow(as_df) else NA_integer_,
+      as_data_frame_error = if (inherits(as_df, "error")) conditionMessage(as_df) else "",
+      fallback_ok = !inherits(fallback, "error"),
+      fallback_rows = if (!inherits(fallback, "error")) nrow(fallback) else NA_integer_,
+      fallback_error = if (inherits(fallback, "error")) conditionMessage(fallback) else "",
+      stringsAsFactors = FALSE
+    )
+  })
+  summary <- do.call(rbind, rows)
+  utils::write.csv(summary, file.path(out_dir, "payload-debug-summary.csv"), row.names = FALSE)
+  invisible(summary)
+}
+
 kflow_extract_payload_timeseries <- function(payload_file, stage, input_par = "", output_par = "", log_file = NULL) {
   if (!file.exists(payload_file)) {
     return(data.frame())
@@ -627,19 +835,24 @@ kflow_extract_payload_timeseries <- function(payload_file, stage, input_par = ""
     return(data.frame())
   }
 
-  env <- kflow_mfclshiny_payload_env()
-  if (is.null(env) || !is.function(env$mp_extract_rep_timeseries)) {
-    return(data.frame())
-  }
-
   scenario <- kflow_env("PLOT_LABEL", kflow_env("MODEL_TOKEN", kflow_env("RUN_LABEL", "Model")))
-  out <- tryCatch(
-    env$mp_extract_rep_timeseries(rep_obj, scenario = scenario),
-    error = function(e) {
-      kflow_note("Could not extract MFCL payload timeseries: ", conditionMessage(e), log_file = log_file)
-      NULL
-    }
-  )
+  env <- kflow_mfclshiny_payload_env()
+  out <- NULL
+  derived_source <- "mfcl_payload_rep_timeseries"
+  if (!is.null(env) && is.function(env$mp_extract_rep_timeseries)) {
+    out <- tryCatch(
+      env$mp_extract_rep_timeseries(rep_obj, scenario = scenario),
+      error = function(e) {
+        kflow_note("Could not extract MFCL payload timeseries: ", conditionMessage(e), log_file = log_file)
+        NULL
+      }
+    )
+  }
+  if (is.null(out) || !nrow(out)) {
+    kflow_note("mfclshiny payload timeseries was empty; trying direct RepOut extraction.", log_file = log_file)
+    out <- kflow_extract_rep_timeseries_fallback(rep_obj, scenario = scenario, log_file = log_file)
+    derived_source <- attr(out, "kflow_derived_source") %||% "mfcl_payload_rep_timeseries_fallback"
+  }
   if (is.null(out) || !nrow(out)) {
     return(data.frame())
   }
@@ -659,8 +872,9 @@ kflow_extract_payload_timeseries <- function(payload_file, stage, input_par = ""
     out$region <- "All"
   }
   out$stage <- stage
-  out$model_key <- kflow_env("MODEL_KEY", kflow_env("JOB_KEY", ""))
-  out$model_token <- kflow_env("MODEL_TOKEN", kflow_env("RUN_LABEL", ""))
+  model_token <- kflow_env("MODEL_TOKEN", kflow_env("RUN_LABEL", ""))
+  out$model_key <- kflow_env("MODEL_KEY", kflow_env("JOB_KEY", model_token))
+  out$model_token <- model_token
   out$model_label <- kflow_env("MODEL_LABEL", out$model_token[[1]])
   out$plot_label <- kflow_env("PLOT_LABEL", out$model_token[[1]])
   out$report_label <- kflow_env("REPORT_LABEL", out$model_label[[1]])
@@ -672,8 +886,8 @@ kflow_extract_payload_timeseries <- function(payload_file, stage, input_par = ""
   out$recipe_token <- kflow_env("RECIPE_TOKEN", out$change_token[[1]])
   out$recipe_family <- kflow_env("RECIPE_FAMILY", kflow_env("CHANGE_GROUP", ""))
   out$recipe_label <- kflow_env("RECIPE_LABEL", out$change_token[[1]])
-  out$source <- "mfcl_payload_rep_timeseries"
-  out$derived_source <- "mfcl_payload_rep_timeseries"
+  out$source <- derived_source
+  out$derived_source <- derived_source
   out$smoke_input_par <- input_par
   out$smoke_output_par <- output_par
   out$payload_file <- basename(payload_file)
@@ -684,7 +898,11 @@ kflow_assert_key_quantities <- function(data, context = "MFCL payload") {
   if (!nrow(data) || !"depletion" %in% names(data)) {
     stop(context, " did not provide depletion timeseries.", call. = FALSE)
   }
-  if (!kflow_bool("KFLOW_REQUIRE_KEY_QUANTITIES", FALSE)) {
+  require_key_quantities <- kflow_bool(
+    "MFCL_REQUIRE_KEY_QUANTITIES",
+    kflow_bool("KFLOW_REQUIRE_KEY_QUANTITIES", FALSE)
+  )
+  if (!isTRUE(require_key_quantities)) {
     return(invisible(TRUE))
   }
   required <- c("spawning_potential", "recruitment", "fishing_mortality")
@@ -881,7 +1099,8 @@ kflow_run_mfcl_smoke <- function(source_dir, out_dir, stage, log_file = NULL) {
     depletion <- payload_timeseries
     utils::write.csv(depletion, file.path(model_dir, "depletion-smoke.csv"), row.names = FALSE)
     kflow_note("Wrote MFCL payload-derived key quantities from ", output_par_name, ".", log_file = log_file)
-  } else if (kflow_bool("KFLOW_REQUIRE_MFCL_DERIVED", FALSE)) {
+  } else if (kflow_bool("MFCL_REQUIRE_DERIVED", kflow_bool("KFLOW_REQUIRE_MFCL_DERIVED", FALSE))) {
+    kflow_write_payload_debug_summary(file.path(model_dir, "model_payload.rds"), out_dir)
     stop("MFCL smoke completed but no payload-derived timeseries were available.", call. = FALSE)
   } else {
     depletion <- kflow_write_smoke_depletion(model_dir, stage)

@@ -29,6 +29,18 @@ for (name in intersect(c("depletion", "spawning_potential", "recruitment", "fish
 depletion <- depletion[is.finite(depletion$year) & is.finite(depletion$depletion), , drop = FALSE]
 dedupe_columns <- setdiff(names(depletion), "source_file")
 depletion <- depletion[!duplicated(depletion[dedupe_columns]), , drop = FALSE]
+if (!"model_token" %in% names(depletion)) {
+  depletion$model_token <- "model"
+}
+depletion$model_token[is.na(depletion$model_token) | !nzchar(depletion$model_token)] <- "model"
+if (!"model_key" %in% names(depletion)) {
+  depletion$model_key <- depletion$model_token
+}
+depletion$model_key[is.na(depletion$model_key) | !nzchar(depletion$model_key)] <- depletion$model_token[is.na(depletion$model_key) | !nzchar(depletion$model_key)]
+if (!"change_token" %in% names(depletion)) {
+  depletion$change_token <- depletion$model_token
+}
+depletion$change_token[is.na(depletion$change_token) | !nzchar(depletion$change_token)] <- depletion$model_token[is.na(depletion$change_token) | !nzchar(depletion$change_token)]
 if (!"plot_label" %in% names(depletion)) {
   depletion$plot_label <- if ("model_token" %in% names(depletion)) depletion$model_token else depletion$model_key
 }
