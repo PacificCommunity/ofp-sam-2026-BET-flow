@@ -157,8 +157,10 @@ writeLines(figure_section, file.path(section_dir, "Figures.qmd"))
 
 if (quarto_available) {
   old <- setwd(render_dir)
-  on.exit(setwd(old), add = TRUE)
-  status <- system2("quarto", c("render", template_main, "--to", effective_render_format, "--output", report_file))
+  status <- tryCatch(
+    system2("quarto", c("render", template_main, "--to", effective_render_format, "--output", report_file)),
+    finally = setwd(old)
+  )
   if (!identical(status, 0L)) {
     stop("quarto render failed", call. = FALSE)
   }
