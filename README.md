@@ -8,7 +8,7 @@ labels, plots, and reports. The starter preset is a BET 2026 smoke workflow
 using:
 
 - `PacificCommunity/ofp-sam-bet2026-inputs`
-- `mfcl/inputs/2023_4region`
+- `mfcl/inputs/2023_4region_1007`
 - `/home/mfcl/mfclo64` from the Docker image
 - `ghcr.io/pacificcommunity/tuna-flow:latest`
 

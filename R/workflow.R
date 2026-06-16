@@ -93,7 +93,7 @@ flow_task_codes <- setNames(paste(flow_task_prefix, c("base", "sensitivity", "di
   "base", "sensitivity", "diagnostics", "plot", "report"
 ))
 flow_default_program <- flow_env_any(c("FLOW_MFCL_PROGRAM", "TUNA_FLOW_MFCL_PROGRAM"), "/home/mfcl/mfclo64")
-flow_default_input_dir <- flow_env_any(c("FLOW_BASE_INPUT_DIR", "TUNA_FLOW_BASE_INPUT_DIR"), "mfcl/inputs/2023_4region")
+flow_default_input_dir <- flow_env_any(c("FLOW_BASE_INPUT_DIR", "TUNA_FLOW_BASE_INPUT_DIR"), "mfcl/inputs/2023_4region_1007")
 flow_base_input_dirs <- flow_split_csv(flow_env_any(c("FLOW_BASE_INPUT_DIRS", "TUNA_FLOW_BASE_INPUT_DIRS"), flow_default_input_dir))
 if (!length(flow_base_input_dirs)) {
   flow_base_input_dirs <- flow_default_input_dir

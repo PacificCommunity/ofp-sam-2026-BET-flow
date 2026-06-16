@@ -35,16 +35,16 @@ Sys.setenv(
   FLOW_ASSESSMENT_YEAR = "2026",
   FLOW_SOURCE_REPO = "PacificCommunity/ofp-sam-bet2026-inputs",
   FLOW_SOURCE_REF = "main",
-  FLOW_BASE_INPUT_DIR = "mfcl/inputs/2023_4region",
+  FLOW_BASE_INPUT_DIR = "mfcl/inputs/2023_4region_1007",
   FLOW_MFCL_PROGRAM = "/home/mfcl/mfclo64"
 )
 
 source("R/workflow.R")
 ```
 
-With that preset, task codes are generated as `bet2026-base`,
-`bet2026-sensitivity`, `bet2026-diagnostics`, `bet2026-plot`, and
-`bet2026-report`. For YFT, set `FLOW_SPECIES = "YFT"` and choose the YFT input
+With that preset, task codes are generated as `bet-2026-base`,
+`bet-2026-sensitivity`, `bet-2026-diagnostics`, `bet-2026-plot`, and
+`bet-2026-report`. For YFT, set `FLOW_SPECIES = "YFT"` and choose the YFT input
 directory; the same tables and dependencies still work.
 
 For local dry runs before the input bundle is pushed, set `SOURCE_PATH` or
@@ -74,7 +74,7 @@ An input bundle is a regular GitHub repository with a small, predictable layout:
 ```text
 mfcl/
   inputs/
-    2023_4region/
+    2023_4region_1007/
       doitall.sh
       *.frq
       *.ini

@@ -433,7 +433,7 @@ kflow_mfcl_log_summary <- function(log_file, out_dir, model_dir) {
 }
 
 kflow_run_mfcl_smoke <- function(source_dir, out_dir, stage, log_file = NULL) {
-  base_dir <- file.path(source_dir, kflow_env("BASE_DIR", kflow_env("FLOW_BASE_INPUT_DIR", "mfcl/inputs/2023_4region")))
+  base_dir <- file.path(source_dir, kflow_env("BASE_DIR", kflow_env("FLOW_BASE_INPUT_DIR", "mfcl/inputs/2023_4region_1007")))
   model_dir <- file.path(source_dir, kflow_env("MODEL_DIR", file.path("model", kflow_env("JOB_KEY", "smoke"))))
   if (!dir.exists(base_dir)) {
     stop(sprintf("MFCL input directory was not found: %s", base_dir), call. = FALSE)
