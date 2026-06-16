@@ -1,6 +1,6 @@
 input_dir <- Sys.getenv("KFLOW_INPUT_DIR", "inputs")
 out_dir <- Sys.getenv("KFLOW_OUT_DIR", "outputs")
-plot_title <- Sys.getenv("PLOT_TITLE", "BET 2026 depletion smoke check")
+plot_title <- Sys.getenv("PLOT_TITLE", "Tuna depletion smoke check")
 
 dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
 
@@ -25,6 +25,8 @@ depletion <- do.call(rbind, lapply(depletion_files, read_one))
 depletion$year <- suppressWarnings(as.integer(depletion$year))
 depletion$depletion <- suppressWarnings(as.numeric(depletion$depletion))
 depletion <- depletion[is.finite(depletion$year) & is.finite(depletion$depletion), , drop = FALSE]
+dedupe_columns <- setdiff(names(depletion), "source_file")
+depletion <- depletion[!duplicated(depletion[dedupe_columns]), , drop = FALSE]
 if (!"plot_label" %in% names(depletion)) {
   depletion$plot_label <- if ("model_token" %in% names(depletion)) depletion$model_token else depletion$model_key
 }

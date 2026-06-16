@@ -27,7 +27,10 @@ plot_markdown <- if (length(copied)) {
   "No plot images were provided by upstream jobs."
 }
 
-title <- kflow_env("REPORT_TITLE", "BET 2026 Kflow report")
+title <- kflow_env("REPORT_TITLE", "Tuna Kflow report")
+report_file_stem <- kflow_env("REPORT_FILE_STEM", "tuna-flow-report")
+report_qmd <- paste0(report_file_stem, ".qmd")
+report_html <- paste0(report_file_stem, ".html")
 qmd <- c(
   "---",
   sprintf("title: \"%s\"", gsub("\"", "'", title)),
@@ -63,12 +66,12 @@ qmd <- c(
   "",
   plot_markdown
 )
-writeLines(qmd, file.path(ctx$out_dir, "bet-kflow-report.qmd"))
+writeLines(qmd, file.path(ctx$out_dir, report_qmd))
 
 if (nzchar(Sys.which("quarto"))) {
   old <- setwd(ctx$out_dir)
   on.exit(setwd(old), add = TRUE)
-  status <- system2("quarto", c("render", "bet-kflow-report.qmd", "--to", "html", "--output", "bet-kflow-report.html"))
+  status <- system2("quarto", c("render", report_qmd, "--to", "html", "--output", report_html))
   if (!identical(status, 0L)) {
     stop("quarto render failed", call. = FALSE)
   }
@@ -89,7 +92,7 @@ if (nzchar(Sys.which("quarto"))) {
     "</pre>",
     "</body></html>"
   )
-  writeLines(html, file.path(ctx$out_dir, "bet-kflow-report.html"))
+  writeLines(html, file.path(ctx$out_dir, report_html))
 }
 
 report_summary <- data.frame(
@@ -98,7 +101,7 @@ report_summary <- data.frame(
   registry_rows = nrow(registries),
   summary_rows = nrow(summaries),
   plot_files = length(copied),
-  report_file = "bet-kflow-report.html",
+  report_file = report_html,
   stringsAsFactors = FALSE
 )
 utils::write.csv(report_summary, file.path(ctx$out_dir, "report-summary.csv"), row.names = FALSE)

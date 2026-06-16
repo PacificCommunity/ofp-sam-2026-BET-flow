@@ -1,4 +1,4 @@
-# BET Kflow exploration-plan helpers.
+# Tuna Kflow exploration-plan helpers.
 #
 # Use this file when the number of models grows beyond a few hand-written rows.
 # It builds stage tables from recipes:
@@ -13,10 +13,20 @@ required_plan_columns <- c(
 )
 
 plan_task_code <- function(stage) {
-  if (exists("bet_task_codes", inherits = TRUE)) {
-    return(get("bet_task_codes", inherits = TRUE)[[stage]])
+  if (exists("flow_task_codes", inherits = TRUE)) {
+    return(get("flow_task_codes", inherits = TRUE)[[stage]])
   }
-  paste("bet2026", stage, sep = "-")
+  species <- tolower(Sys.getenv("FLOW_SPECIES", Sys.getenv("TUNA_FLOW_SPECIES", "tuna")))
+  year <- Sys.getenv("FLOW_ASSESSMENT_YEAR", Sys.getenv("TUNA_FLOW_ASSESSMENT_YEAR", ""))
+  prefix <- Sys.getenv("FLOW_TASK_PREFIX", Sys.getenv("TUNA_FLOW_TASK_PREFIX", paste0(species, year)))
+  paste(prefix, stage, sep = "-")
+}
+
+plan_flow_title <- function(default = "Tuna model exploration") {
+  if (exists("flow_assessment_label", inherits = TRUE)) {
+    return(paste(get("flow_assessment_label", inherits = TRUE), "model exploration"))
+  }
+  default
 }
 
 assert_plan_table <- function(x, label) {
@@ -259,7 +269,7 @@ expand_plots <- function(diagnostics, plots, group_by = c("BASE_MODEL_KEY")) {
         JOB_DESCRIPTION = plot$DESCRIPTION,
         INPUT_TASK = plan_task_code("diagnostics"),
         INPUT_KEY = paste(keys, collapse = ","),
-        PLOT_TITLE = paste("BET model exploration", group_token),
+        PLOT_TITLE = paste(plan_flow_title(), group_token),
         PLOT_BACKEND = plot$PLOT_BACKEND,
         stringsAsFactors = FALSE
       )
@@ -289,7 +299,7 @@ expand_reports <- function(plots, reports) {
       JOB_DESCRIPTION = report$DESCRIPTION,
       INPUT_TASK = plan_task_code("plot"),
       INPUT_KEY = paste(plots$JOB_KEY, collapse = ","),
-      REPORT_TITLE = paste("BET model exploration", report$REPORT_TOKEN),
+      REPORT_TITLE = paste(plan_flow_title(), report$REPORT_TOKEN),
       stringsAsFactors = FALSE
     )
   }

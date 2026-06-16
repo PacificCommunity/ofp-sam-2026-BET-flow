@@ -20,7 +20,7 @@ if (identical(plot_backend, "mfclshiny") && nzchar(kflow_env("MFCLSHINY_SCRIPT",
   Sys.setenv(
     KFLOW_INPUT_DIR = normalizePath(ctx$input_dir, winslash = "/", mustWork = FALSE),
     KFLOW_OUT_DIR = normalizePath(ctx$out_dir, winslash = "/", mustWork = FALSE),
-    PLOT_TITLE = kflow_env("PLOT_TITLE", "BET model exploration")
+    PLOT_TITLE = kflow_env("PLOT_TITLE", "Tuna model exploration")
   )
   kflow_run_optional_script("MFCLSHINY_SCRIPT", getwd(), ctx$out_dir, "plot", log_file = ctx$log_file)
 } else {
@@ -38,7 +38,7 @@ if (identical(plot_backend, "mfclshiny") && nzchar(kflow_env("MFCLSHINY_SCRIPT",
   names(values) <- counts$change_group
   if (!length(values) || all(values == 0)) {
     plot.new()
-    title(kflow_env("PLOT_TITLE", "BET model exploration"))
+    title(kflow_env("PLOT_TITLE", "Tuna model exploration"))
     text(0.5, 0.5, "No input registry rows found")
   } else {
     barplot(
@@ -47,7 +47,7 @@ if (identical(plot_backend, "mfclshiny") && nzchar(kflow_env("MFCLSHINY_SCRIPT",
       col = "#2f83b7",
       border = "#195577",
       ylab = "Input jobs",
-      main = kflow_env("PLOT_TITLE", "BET model exploration")
+      main = kflow_env("PLOT_TITLE", "Tuna model exploration")
     )
     grid(nx = NA, ny = NULL, col = "#d7e3ea")
   }
@@ -68,4 +68,3 @@ utils::write.csv(plot_summary, file.path(ctx$out_dir, "plot-summary.csv"), row.n
 writeLines(capture.output(print(plot_summary)), file.path(ctx$out_dir, "plot-summary.txt"))
 kflow_write_registry(ctx$out_dir, "plot")
 kflow_write_summary(ctx$out_dir, "plot")
-

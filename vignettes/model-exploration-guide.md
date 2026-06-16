@@ -1,4 +1,4 @@
-# BET 2026 Model Exploration Guide
+# Tuna Model Exploration Guide
 
 This guide shows the intended day-to-day workflow. Keep the README short; use
 this file when you need to remember how the pieces fit together.
@@ -12,12 +12,34 @@ base -> sensitivity -> diagnostics -> plot -> report
 base ----------------> diagnostics -> plot -> report
 ```
 
-The local R session only registers and launches jobs. The actual MFCL work runs
+The local R session registers and launches jobs. The actual MFCL work runs
 inside the Docker image:
 
 ```text
-ghcr.io/pacificcommunity/bet2026-flow:latest
+ghcr.io/pacificcommunity/tuna-flow:latest
 ```
+
+## Species preset
+
+Set these before sourcing `R/workflow.R` when you want a different species or
+assessment year:
+
+```r
+Sys.setenv(
+  FLOW_SPECIES = "BET",
+  FLOW_SPECIES_LABEL = "Bigeye tuna",
+  FLOW_ASSESSMENT_YEAR = "2026",
+  FLOW_BASE_INPUT_DIR = "mfcl/inputs/2023_4region",
+  FLOW_MFCL_PROGRAM = "mfcl/exe/mfclo64_2026_02_04_vsn2278"
+)
+
+source("R/workflow.R")
+```
+
+With that preset, task codes are generated as `bet2026-base`,
+`bet2026-sensitivity`, `bet2026-diagnostics`, `bet2026-plot`, and
+`bet2026-report`. For YFT, set `FLOW_SPECIES = "YFT"` and choose the YFT input
+directory; the same tables and dependencies still work.
 
 ## Where to edit
 
@@ -48,8 +70,8 @@ Use short tokens that make sense in tables and plots:
 - `PARENT_MODEL_TOKEN`: upstream model token.
 - `RECIPE_TOKEN`: recipe name used to generate the row.
 
-Every job writes these fields to `model-registry.csv` and
-`model-registry.json`.
+Every job writes these fields, plus `FLOW_SPECIES` and
+`FLOW_ASSESSMENT_YEAR`, to `model-registry.csv` and `model-registry.json`.
 
 ## Add a sensitivity
 
@@ -99,8 +121,8 @@ rebuild:
 
 ```r
 diagnostics_runs <- rbind(
-  build_diagnostics_rows(base_models, starter_diagnostics_recipes, "bet2026-base"),
-  build_diagnostics_rows(sensitivity_models, starter_diagnostics_recipes, "bet2026-sensitivity")
+  build_diagnostics_rows(base_models, starter_diagnostics_recipes, flow_task_codes[["base"]]),
+  build_diagnostics_rows(sensitivity_models, starter_diagnostics_recipes, flow_task_codes[["sensitivity"]])
 )
 ```
 
@@ -143,13 +165,12 @@ source("R/workflow.R")
 source("R/plan.R")
 
 plan <- build_starter_plan()
-
 preview_plan(plan)
 ```
 
 ## Runtime notes
 
-The default backend is the included MFCL executable:
+The starter backend is the included MFCL executable:
 
 ```text
 mfcl/exe/mfclo64_2026_02_04_vsn2278

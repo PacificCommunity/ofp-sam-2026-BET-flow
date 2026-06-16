@@ -1,7 +1,7 @@
-name: bet2026-diagnostics
-description: Run one BET 2026 diagnostics smoke job from either a base job or a sensitivity job.
+name: tuna-flow-diagnostics
+description: Run one tuna assessment diagnostics job from either a base job or a sensitivity job.
 command: bash run.sh
-docker_image: ghcr.io/pacificcommunity/bet2026-flow:latest
+docker_image: ghcr.io/pacificcommunity/tuna-flow:latest
 resources:
   cpus: 2
   memory: 12GB
@@ -11,6 +11,10 @@ output_patterns:
 job_config:
   optional:
     - RUN_LABEL
+    - FLOW_SPECIES
+    - FLOW_SPECIES_LABEL
+    - FLOW_ASSESSMENT_YEAR
+    - FLOW_TASK_PREFIX
     - JOB_KEY
     - JOB_TITLE
     - JOB_DESCRIPTION
@@ -32,9 +36,11 @@ job_config:
     - BACKEND_SCRIPT
     - BACKEND_COMMAND
     - PROGRAM_PATH
+    - FLOW_MFCL_PROGRAM
     - MAKE_TARGETS
     - MAKE_VARS
     - BASE_DIR
+    - FLOW_BASE_INPUT_DIR
     - MODEL_DIR
     - PATCH_SCRIPT
     - PATCH_INPUT_DIR
