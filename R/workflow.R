@@ -474,6 +474,11 @@ common_env <- function(rows) {
   } else {
     "auto"
   }
+  rows$KFLOW_RUNTIME_GITHUB_AUTH <- if ("KFLOW_RUNTIME_GITHUB_AUTH" %in% names(rows)) {
+    rows$KFLOW_RUNTIME_GITHUB_AUTH
+  } else {
+    "true"
+  }
   rows$KFLOW_FORWARD_GITHUB_TOKEN_TO_RUNTIME <- if ("KFLOW_FORWARD_GITHUB_TOKEN_TO_RUNTIME" %in% names(rows)) {
     rows$KFLOW_FORWARD_GITHUB_TOKEN_TO_RUNTIME
   } else {
