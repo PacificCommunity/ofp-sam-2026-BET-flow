@@ -1,11 +1,11 @@
-name: Plot
-description: Combine selected model outputs and create model exploration plots.
+name: bet2026-plot
+description: Combine selected BET 2026 smoke outputs and create model exploration plots.
 command: bash run.sh
 docker_image: ghcr.io/pacificcommunity/bet2026-flow:latest
 resources:
   cpus: 2
-  memory: 8GB
-  disk: 40GB
+  memory: 12GB
+  disk: 5GB
 output_patterns:
   - outputs/**
 job_config:

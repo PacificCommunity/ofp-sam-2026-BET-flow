@@ -12,6 +12,13 @@ required_plan_columns <- c(
   "BASE_MODEL_KEY", "CHANGE_TOKEN", "CHANGE_GROUP", "CHANGE_SUMMARY"
 )
 
+plan_task_code <- function(stage) {
+  if (exists("bet_task_codes", inherits = TRUE)) {
+    return(get("bet_task_codes", inherits = TRUE)[[stage]])
+  }
+  paste("bet2026", stage, sep = "-")
+}
+
 assert_plan_table <- function(x, label) {
   missing <- setdiff(required_plan_columns, names(x))
   if (length(missing)) {
@@ -96,7 +103,7 @@ expand_sensitivities <- function(bases, sensitivities) {
       sens <- sensitivities[sens_index, , drop = FALSE]
       row <- sens
       row$BASE_MODEL_KEY <- base$JOB_KEY
-      row$INPUT_TASK <- "Base"
+      row$INPUT_TASK <- plan_task_code("base")
       row$INPUT_KEY <- base$JOB_KEY
       row$JOB_KEY <- paste(base$JOB_KEY, sens$CHANGE_TOKEN, sep = "--")
       row$RUN_LABEL <- row$JOB_KEY
@@ -117,7 +124,11 @@ expand_diagnostics <- function(model_rows, diagnostics) {
   rows <- list()
   for (model_index in seq_len(nrow(model_rows))) {
     model <- model_rows[model_index, , drop = FALSE]
-    input_task <- if (identical(as.character(model$CHANGE_GROUP), "base")) "Base" else "Sensitivity"
+    input_task <- if (identical(as.character(model$CHANGE_GROUP), "base")) {
+      plan_task_code("base")
+    } else {
+      plan_task_code("sensitivity")
+    }
     for (diag_index in seq_len(nrow(diagnostics))) {
       diag <- diagnostics[diag_index, , drop = FALSE]
       token <- paste(model$MODEL_TOKEN, diag$DIAGNOSTIC_TOKEN, sep = "_")
@@ -128,7 +139,7 @@ expand_diagnostics <- function(model_rows, diagnostics) {
         MODEL_KEY = job_key,
         MODEL_TOKEN = token,
         MODEL_NAME = paste(model$MODEL_NAME, diag$DIAGNOSTIC_TOKEN, sep = " | "),
-        BASE_MODEL_KEY = plan_nonempty(model$BASE_MODEL_KEY, if (identical(input_task, "Base")) model$JOB_KEY else ""),
+        BASE_MODEL_KEY = plan_nonempty(model$BASE_MODEL_KEY, if (identical(input_task, plan_task_code("base"))) model$JOB_KEY else ""),
         CHANGE_TOKEN = diag$DIAGNOSTIC_TOKEN,
         CHANGE_GROUP = paste("diagnostics", diag$DIAGNOSTIC_GROUP, sep = ":"),
         CHANGE_SUMMARY = diag$DESCRIPTION,
@@ -194,7 +205,7 @@ expand_plots <- function(diagnostics, plots, group_by = c("BASE_MODEL_KEY")) {
         CHANGE_SUMMARY = plot$DESCRIPTION,
         JOB_TITLE = paste("Plot:", plot$PLOT_TOKEN, group_token),
         JOB_DESCRIPTION = plot$DESCRIPTION,
-        INPUT_TASK = "Diagnostics",
+        INPUT_TASK = plan_task_code("diagnostics"),
         INPUT_KEY = paste(keys, collapse = ","),
         PLOT_TITLE = paste("BET model exploration", group_token),
         PLOT_BACKEND = plot$PLOT_BACKEND,
@@ -224,7 +235,7 @@ expand_reports <- function(plots, reports) {
       CHANGE_SUMMARY = report$DESCRIPTION,
       JOB_TITLE = paste("Report:", report$REPORT_TOKEN),
       JOB_DESCRIPTION = report$DESCRIPTION,
-      INPUT_TASK = "Plot",
+      INPUT_TASK = plan_task_code("plot"),
       INPUT_KEY = paste(plots$JOB_KEY, collapse = ","),
       REPORT_TITLE = paste("BET model exploration", report$REPORT_TOKEN),
       stringsAsFactors = FALSE

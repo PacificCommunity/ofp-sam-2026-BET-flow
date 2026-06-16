@@ -1,11 +1,11 @@
-name: Base
-description: Run one BET base model from a clear R-launched model row.
+name: bet2026-base
+description: Run one BET 2026 base model smoke job from a clear R-launched model row.
 command: bash run.sh
 docker_image: ghcr.io/pacificcommunity/bet2026-flow:latest
 resources:
-  cpus: 8
-  memory: 32GB
-  disk: 120GB
+  cpus: 2
+  memory: 12GB
+  disk: 5GB
 output_patterns:
   - outputs/**
 job_config:
@@ -24,6 +24,8 @@ job_config:
     - INPUT_VARIANT
     - SOURCE_REPO
     - SOURCE_REF
+    - USE_FLOW_SOURCE
+    - USE_LOCAL_SOURCE
     - MFCL_BACKEND
     - BACKEND_SCRIPT
     - BACKEND_COMMAND

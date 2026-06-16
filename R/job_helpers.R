@@ -97,6 +97,69 @@ kflow_clone_source <- function(work_dir = "work/source", log_file = NULL) {
   normalizePath(work_dir, winslash = "/", mustWork = TRUE)
 }
 
+kflow_flow_root <- function() {
+  candidates <- unique(c(
+    kflow_env("KFLOW_FLOW_ROOT", ""),
+    file.path(getwd(), ".."),
+    getwd()
+  ))
+  candidates <- candidates[nzchar(candidates)]
+  candidates <- normalizePath(candidates, winslash = "/", mustWork = FALSE)
+  hits <- candidates[file.exists(file.path(candidates, "R", "workflow.R"))]
+  if (length(hits)) {
+    return(normalizePath(hits[[1]], winslash = "/", mustWork = TRUE))
+  }
+  normalizePath(file.path(getwd(), ".."), winslash = "/", mustWork = FALSE)
+}
+
+kflow_copy_tree <- function(from, to) {
+  if (!dir.exists(from)) {
+    stop(sprintf("Directory does not exist: %s", from), call. = FALSE)
+  }
+  unlink(to, recursive = TRUE, force = TRUE)
+  dir.create(to, recursive = TRUE, showWarnings = FALSE)
+  entries <- list.files(from, full.names = TRUE, all.files = TRUE, no.. = TRUE)
+  if (length(entries)) {
+    ok <- file.copy(entries, to, overwrite = TRUE, recursive = TRUE, copy.date = TRUE)
+    if (any(!ok)) {
+      stop(sprintf("Failed to copy some files from %s to %s", from, to), call. = FALSE)
+    }
+  }
+  invisible(normalizePath(to, winslash = "/", mustWork = TRUE))
+}
+
+kflow_prepare_flow_source <- function(work_dir = "work/source", log_file = NULL) {
+  flow_root <- kflow_flow_root()
+  mfcl_dir <- file.path(flow_root, "mfcl")
+  if (!dir.exists(mfcl_dir)) {
+    stop("Flow checkout source requested, but this checkout has no mfcl/ directory.", call. = FALSE)
+  }
+  unlink(work_dir, recursive = TRUE, force = TRUE)
+  dir.create(work_dir, recursive = TRUE, showWarnings = FALSE)
+  kflow_copy_tree(mfcl_dir, file.path(work_dir, "mfcl"))
+  exe_files <- list.files(file.path(work_dir, "mfcl", "exe"), pattern = "^mfcl", full.names = TRUE)
+  if (length(exe_files)) {
+    Sys.chmod(exe_files, mode = "0755", use_umask = FALSE)
+  }
+  kflow_note("Prepared flow checkout source from ", flow_root, log_file = log_file)
+  normalizePath(work_dir, winslash = "/", mustWork = TRUE)
+}
+
+kflow_use_flow_source <- function() {
+  source_repo <- tolower(kflow_env("SOURCE_REPO", ""))
+  kflow_bool("USE_FLOW_SOURCE", FALSE) ||
+  kflow_bool("USE_LOCAL_SOURCE", FALSE) ||
+    source_repo %in% c("flow_checkout", "local", ".", "flow", "this")
+}
+
+kflow_checkout_source <- function(work_dir = "work/source", log_file = NULL) {
+  if (kflow_use_flow_source()) {
+    kflow_prepare_flow_source(work_dir, log_file = log_file)
+  } else {
+    kflow_clone_source(work_dir, log_file = log_file)
+  }
+}
+
 kflow_write_manifest <- function(root, out_file) {
   files <- if (dir.exists(root)) list.files(root, recursive = TRUE, all.files = TRUE, no.. = TRUE, full.names = TRUE) else character()
   if (!length(files)) {
@@ -248,6 +311,138 @@ kflow_run_make_targets <- function(source_dir, targets, log_file = NULL) {
   invisible(targets)
 }
 
+kflow_mfcl_program <- function(source_dir) {
+  program <- kflow_env("PROGRAM_PATH", "mfcl/exe/mfclo64_2026_02_04_vsn2278")
+  program <- if (grepl("^/", program)) program else file.path(source_dir, program)
+  if (!file.exists(program)) {
+    exe_dir <- file.path(source_dir, "mfcl", "exe")
+    candidates <- list.files(exe_dir, pattern = "^mfclo64", full.names = TRUE)
+    if (length(candidates)) {
+      program <- candidates[[1]]
+    }
+  }
+  if (!file.exists(program)) {
+    stop(sprintf("MFCL executable was not found: %s", program), call. = FALSE)
+  }
+  Sys.chmod(program, mode = "0755", use_umask = FALSE)
+  normalizePath(program, winslash = "/", mustWork = TRUE)
+}
+
+kflow_write_smoke_depletion <- function(target_dir, stage) {
+  years <- 2017:2023
+  regions <- paste0("Region ", 1:4)
+  grid <- expand.grid(year = years, region = regions, stringsAsFactors = FALSE)
+  trend <- stats::setNames(seq(0.43, 0.34, length.out = length(years)), years)
+  region_offset <- stats::setNames(c(0.025, 0.005, -0.010, -0.025), regions)
+  token <- kflow_env("CHANGE_TOKEN", kflow_env("MODEL_TOKEN", "Base"))
+  token_offset <- (sum(utf8ToInt(token)) %% 7) / 200
+  stage_offset <- switch(stage, base = 0, sensitivity = -0.025, diagnostics = 0.010, 0)
+  value <- trend[as.character(grid$year)] + region_offset[grid$region] + token_offset + stage_offset
+  grid$depletion <- round(pmax(0.05, pmin(0.95, as.numeric(value))), 3)
+  grid$stage <- stage
+  grid$model_key <- kflow_env("MODEL_KEY", kflow_env("JOB_KEY", ""))
+  grid$model_token <- kflow_env("MODEL_TOKEN", kflow_env("RUN_LABEL", ""))
+  grid$change_token <- token
+  grid$change_group <- kflow_env("CHANGE_GROUP", "")
+  grid$source <- "mfcl_makepar_smoke"
+  out_file <- file.path(target_dir, "depletion-smoke.csv")
+  utils::write.csv(grid, out_file, row.names = FALSE)
+  invisible(grid)
+}
+
+kflow_run_mfcl_smoke <- function(source_dir, out_dir, stage, log_file = NULL) {
+  base_dir <- file.path(source_dir, kflow_env("BASE_DIR", "mfcl/inputs/2023_4region"))
+  model_dir <- file.path(source_dir, kflow_env("MODEL_DIR", file.path("model", kflow_env("JOB_KEY", "smoke"))))
+  if (!dir.exists(base_dir)) {
+    stop(sprintf("MFCL input directory was not found: %s", base_dir), call. = FALSE)
+  }
+
+  kflow_copy_tree(base_dir, model_dir)
+  program <- kflow_mfcl_program(source_dir)
+  frq <- kflow_env("MFCL_FRQ", "bet.frq")
+  ini <- kflow_env("MFCL_INI", "bet.ini")
+  par <- kflow_env("SMOKE_PAR", "00.par")
+  command <- paste(
+    shQuote(program),
+    shQuote(frq),
+    shQuote(ini),
+    shQuote(par),
+    "-makepar"
+  )
+  kflow_note("Running MFCL smoke makepar in ", model_dir, log_file = log_file)
+  kflow_run_shell(command, workdir = model_dir, log_file = log_file)
+
+  output_par <- file.path(model_dir, par)
+  if (!file.exists(output_par)) {
+    stop(sprintf("MFCL smoke run did not create %s", output_par), call. = FALSE)
+  }
+  smoke <- data.frame(
+    stage = stage,
+    run_label = kflow_env("RUN_LABEL", ""),
+    job_key = kflow_env("JOB_KEY", ""),
+    model_key = kflow_env("MODEL_KEY", ""),
+    model_token = kflow_env("MODEL_TOKEN", ""),
+    change_token = kflow_env("CHANGE_TOKEN", ""),
+    input_dir = kflow_env("BASE_DIR", ""),
+    model_dir = kflow_env("MODEL_DIR", ""),
+    executable = basename(program),
+    frq = frq,
+    ini = ini,
+    par = par,
+    par_size = file.info(output_par)$size,
+    stringsAsFactors = FALSE
+  )
+  utils::write.csv(smoke, file.path(model_dir, "mfcl-smoke-summary.csv"), row.names = FALSE)
+  utils::write.csv(smoke, file.path(out_dir, "mfcl-smoke-summary.csv"), row.names = FALSE)
+  kflow_write_smoke_depletion(model_dir, stage)
+  kflow_write_manifest(model_dir, file.path(model_dir, "model-manifest.csv"))
+  invisible(smoke)
+}
+
+kflow_run_diagnostics_smoke <- function(source_dir, out_dir, stage = "diagnostics", log_file = NULL) {
+  model_dir <- file.path(source_dir, kflow_env("MODEL_DIR", file.path("model", kflow_env("JOB_KEY", "diagnostics"))))
+  dir.create(model_dir, recursive = TRUE, showWarnings = FALSE)
+  depletion_files <- list.files(source_dir, pattern = "^depletion-smoke[.]csv$", recursive = TRUE, full.names = TRUE)
+  depletion <- kflow_read_csv_union(depletion_files)
+  if (nrow(depletion)) {
+    parent <- depletion
+    parent$model_role <- "parent"
+    diagnostic <- depletion
+    diagnostic$stage <- stage
+    diagnostic$model_key <- kflow_env("MODEL_KEY", kflow_env("JOB_KEY", ""))
+    diagnostic$model_token <- kflow_env("MODEL_TOKEN", kflow_env("RUN_LABEL", ""))
+    diagnostic$change_token <- kflow_env("CHANGE_TOKEN", "JitterSmoke")
+    diagnostic$source <- "diagnostics_smoke_from_parent"
+    diagnostic$model_role <- "diagnostics"
+    diagnostic$depletion <- round(pmax(0.05, pmin(0.95, as.numeric(diagnostic$depletion) + 0.005)), 3)
+    depletion <- rbind(parent, diagnostic)
+    utils::write.csv(depletion, file.path(model_dir, "depletion-smoke.csv"), row.names = FALSE)
+  } else {
+    depletion <- kflow_write_smoke_depletion(model_dir, stage)
+    depletion$model_role <- "diagnostics"
+    utils::write.csv(depletion, file.path(model_dir, "depletion-smoke.csv"), row.names = FALSE)
+  }
+  final_year <- suppressWarnings(max(as.integer(depletion$year), na.rm = TRUE))
+  final <- depletion[depletion$year == final_year & depletion$model_key == kflow_env("MODEL_KEY", kflow_env("JOB_KEY", "")), , drop = FALSE]
+  diagnostics <- data.frame(
+    stage = stage,
+    run_label = kflow_env("RUN_LABEL", ""),
+    job_key = kflow_env("JOB_KEY", ""),
+    parent_task = kflow_env("INPUT_TASK", ""),
+    parent_key = kflow_env("INPUT_KEY", ""),
+    diagnostic = kflow_env("CHANGE_TOKEN", "JitterSmoke"),
+    final_year = final_year,
+    mean_final_depletion = round(mean(as.numeric(final$depletion), na.rm = TRUE), 3),
+    input_depletion_files = length(depletion_files),
+    stringsAsFactors = FALSE
+  )
+  utils::write.csv(diagnostics, file.path(model_dir, "diagnostics-summary.csv"), row.names = FALSE)
+  utils::write.csv(diagnostics, file.path(out_dir, "diagnostics-summary.csv"), row.names = FALSE)
+  kflow_write_manifest(model_dir, file.path(model_dir, "model-manifest.csv"))
+  kflow_note("Wrote diagnostics smoke summary from ", length(depletion_files), " depletion files.", log_file = log_file)
+  invisible(diagnostics)
+}
+
 kflow_patch_script_path <- function(script) {
   kflow_existing_script(script)
 }
@@ -323,6 +518,10 @@ kflow_run_backend <- function(source_dir, out_dir, stage, log_file = NULL) {
   backend <- kflow_env("MFCL_BACKEND", "mfcl_exe")
   if (identical(backend, "mfcl_exe")) {
     kflow_run_make_targets(source_dir, kflow_env("MAKE_TARGETS", ""), log_file = log_file)
+  } else if (identical(backend, "mfcl_smoke")) {
+    kflow_run_mfcl_smoke(source_dir, out_dir, stage, log_file = log_file)
+  } else if (identical(backend, "diagnostics_smoke")) {
+    kflow_run_diagnostics_smoke(source_dir, out_dir, stage, log_file = log_file)
   } else if (identical(backend, "mfclrtmb")) {
     command <- kflow_env("BACKEND_COMMAND", "")
     script <- kflow_env("BACKEND_SCRIPT", "")
@@ -373,9 +572,11 @@ kflow_registry_values <- function(stage, extra = list()) {
     base_dir = kflow_env("BASE_DIR", ""),
     model_dir = kflow_env("MODEL_DIR", ""),
     mfcl_backend = kflow_env("MFCL_BACKEND", "mfcl_exe"),
-    program_path = kflow_env("PROGRAM_PATH", "mfcl/exe/mfclo64_2026"),
-    source_repo = kflow_env("SOURCE_REPO", "PacificCommunity/ofp-sam-2026-BET"),
-    source_ref = kflow_env("SOURCE_REF", "main"),
+    program_path = kflow_env("PROGRAM_PATH", "mfcl/exe/mfclo64_2026_02_04_vsn2278"),
+    source_repo = kflow_env("SOURCE_REPO", "flow_checkout"),
+    source_ref = kflow_env("SOURCE_REF", ""),
+    use_flow_source = kflow_env("USE_FLOW_SOURCE", ""),
+    use_local_source = kflow_env("USE_LOCAL_SOURCE", ""),
     flow_group = kflow_env("FLOW_GROUP", ""),
     created_at = format(Sys.time(), "%Y-%m-%d %H:%M:%S %z")
   )
@@ -402,8 +603,10 @@ kflow_write_summary <- function(out_dir, stage, extra = list()) {
       run_label = kflow_env("RUN_LABEL", ""),
       job_key = kflow_env("JOB_KEY", ""),
       job_title = kflow_env("JOB_TITLE", ""),
-      source_repo = kflow_env("SOURCE_REPO", "PacificCommunity/ofp-sam-2026-BET"),
-      source_ref = kflow_env("SOURCE_REF", "main"),
+      source_repo = kflow_env("SOURCE_REPO", "flow_checkout"),
+      source_ref = kflow_env("SOURCE_REF", ""),
+      use_flow_source = kflow_env("USE_FLOW_SOURCE", ""),
+      use_local_source = kflow_env("USE_LOCAL_SOURCE", ""),
       backend = kflow_env("MFCL_BACKEND", "mfcl_exe"),
       make_targets = kflow_env("MAKE_TARGETS", ""),
       make_vars = kflow_env("MAKE_VARS", ""),

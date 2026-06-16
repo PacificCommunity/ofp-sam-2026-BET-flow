@@ -1,10 +1,12 @@
-outputs/
-inputs/
-work/
+/outputs/
+/inputs/
+/work/
+*/work/
 .kflow-local/
 KflowOutput/
 .Rhistory
 .RData
 .Rproj.user/
 *.log
-
+!mfcl/inputs/
+!mfcl/inputs/**

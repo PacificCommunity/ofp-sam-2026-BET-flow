@@ -16,8 +16,7 @@ plot_dir <- file.path(ctx$out_dir, "report-plots")
 dir.create(plot_dir, recursive = TRUE, showWarnings = FALSE)
 copied <- character()
 for (index in seq_along(plot_files)) {
-  target <- sprintf("plot-%03d%s", index, tools::file_ext(plot_files[index]))
-  target <- sub("([0-9])([A-Za-z0-9]+)$", "\\1.\\2", target)
+  target <- sprintf("plot-%03d.%s", index, tools::file_ext(plot_files[index]))
   file.copy(plot_files[index], file.path(plot_dir, target), overwrite = TRUE)
   copied <- c(copied, file.path("report-plots", target))
 }

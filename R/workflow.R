@@ -7,10 +7,18 @@
 # - Keep heavy job internals in R/job_helpers.R and large combinatorics in
 #   R/plan.R so this file stays readable.
 
-library(KflowKit)
-
 `%||%` <- function(x, y) {
   if (is.null(x) || length(x) == 0 || (length(x) == 1 && is.na(x))) y else x
+}
+
+bet_require_kflowkit <- function() {
+  if (!requireNamespace("KflowKit", quietly = TRUE)) {
+    stop(
+      "KflowKit is required to register or launch jobs. Install it with remotes::install_github('kyuhank/KflowKit').",
+      call. = FALSE
+    )
+  }
+  invisible(TRUE)
 }
 
 # ---- Project defaults ------------------------------------------------------------
@@ -21,10 +29,19 @@ library(KflowKit)
 
 bet_kflow_repo <- Sys.getenv("BET_KFLOW_REPO", "PacificCommunity/ofp-sam-2026-BET-flow")
 bet_kflow_branch <- Sys.getenv("BET_KFLOW_BRANCH", "main")
-bet_source_repo <- Sys.getenv("BET_SOURCE_REPO", "PacificCommunity/ofp-sam-2026-BET")
-bet_source_ref <- Sys.getenv("BET_SOURCE_REF", "main")
+bet_source_repo <- Sys.getenv("BET_SOURCE_REPO", "flow_checkout")
+bet_source_ref <- Sys.getenv("BET_SOURCE_REF", "")
 bet_docker_image <- Sys.getenv("BET_DOCKER_IMAGE", "ghcr.io/pacificcommunity/bet2026-flow:latest")
 bet_flow_group <- paste0("bet-", format(Sys.time(), "%Y%m%d-%H%M%S"))
+bet_task_codes <- c(
+  base = "bet2026-base",
+  sensitivity = "bet2026-sensitivity",
+  diagnostics = "bet2026-diagnostics",
+  plot = "bet2026-plot",
+  report = "bet2026-report"
+)
+bet_default_program <- "mfcl/exe/mfclo64_2026_02_04_vsn2278"
+bet_default_input_dir <- "mfcl/inputs/2023_4region"
 
 # ---- Small editable starter tables ----------------------------------------------
 #
@@ -40,132 +57,130 @@ bet_flow_group <- paste0("bet-", format(Sys.time(), "%Y%m%d-%H%M%S"))
 # - CHANGE_SUMMARY: human-readable explanation for future you.
 
 base_models <- data.frame(
-  RUN_LABEL = "base-4region",
-  JOB_KEY = "base-4region",
-  MODEL_KEY = "base-4region",
+  RUN_LABEL = "base-4r-smoke",
+  JOB_KEY = "base-4r-smoke",
+  MODEL_KEY = "base-4r-smoke",
   MODEL_TOKEN = "Base4R",
-  MODEL_NAME = "2023 4-region representative base",
+  MODEL_NAME = "BET 2023 4-region base smoke",
   BASE_MODEL_KEY = "",
-  CHANGE_TOKEN = "Base",
+  CHANGE_TOKEN = "Base4R",
   CHANGE_GROUP = "base",
-  CHANGE_SUMMARY = "9-to-4 representative BET base input collapse and MFCL run.",
+  CHANGE_SUMMARY = "Runs the included 2023 4-region BET MFCL input through a fast makepar smoke check.",
   INPUT_VARIANT = "2023_4region",
+  SOURCE_REPO = "flow_checkout",
+  SOURCE_REF = "",
+  USE_FLOW_SOURCE = "1",
+  MFCL_BACKEND = "mfcl_smoke",
+  PROGRAM_PATH = bet_default_program,
   PATCH_SCRIPT = "",
-  PATCH_INPUT_DIR = "mfcl/inputs/2023_rep",
-  PATCH_OUTPUT_DIR = "mfcl/inputs/2023_4region",
-  JOB_TITLE = "Base: 4-region representative",
-  JOB_DESCRIPTION = "Runs the 2023 4-region representative BET base model with the MFCL executable.",
-  MAKE_TARGETS = "run-4region",
-  BASE_DIR = "mfcl/inputs/2023_4region",
-  MODEL_DIR = "model/2023R4",
-  COLLECT_PATHS = "model/2023R4,mfcl/inputs/2023_4region",
+  PATCH_INPUT_DIR = "",
+  PATCH_OUTPUT_DIR = bet_default_input_dir,
+  JOB_TITLE = "BET 2026 base: 4-region smoke",
+  JOB_DESCRIPTION = "Runs the included 2023 4-region BET input with the MFCL executable using a fast makepar smoke check.",
+  MAKE_TARGETS = "mfcl-smoke",
+  BASE_DIR = bet_default_input_dir,
+  MODEL_DIR = "model/base-4r-smoke",
+  COLLECT_PATHS = "model/base-4r-smoke,mfcl/inputs/2023_4region,mfcl/exe/mfclo64_2026_02_04_vsn2278",
   stringsAsFactors = FALSE
 )
 
 sensitivity_models <- data.frame(
-  RUN_LABEL = c("sens-fixM", "sens-fixVB-M"),
-  JOB_KEY = c("sens-fixM", "sens-fixVB-M"),
-  MODEL_KEY = c("sens-fixM", "sens-fixVB-M"),
-  MODEL_TOKEN = c("FixM", "FixVBM"),
-  MODEL_NAME = c("Sensitivity FixM", "Sensitivity FixVB_M"),
-  BASE_MODEL_KEY = "base-4region",
-  CHANGE_TOKEN = c("FixM", "FixVBM"),
-  CHANGE_GROUP = c("movement", "growth"),
-  CHANGE_SUMMARY = c(
-    "Uses the fixM input variant from the BET source repository.",
-    "Uses the fixVB_M input variant from the BET source repository."
-  ),
-  INPUT_VARIANT = c("2023_4region_fixM", "2023_4region_fixVB_M"),
-  PATCH_SCRIPT = "",
-  PATCH_INPUT_DIR = c("mfcl/inputs/2023_fixM", "mfcl/inputs/2023_fixVB_M"),
-  PATCH_OUTPUT_DIR = c("mfcl/inputs/2023_4region_fixM", "mfcl/inputs/2023_4region_fixVB_M"),
-  JOB_TITLE = c("Sensitivity: fixM", "Sensitivity: fixVB_M"),
-  JOB_DESCRIPTION = c(
-    "Runs the fixM sensitivity from the selected base model.",
-    "Runs the fixVB_M sensitivity from the selected base model."
-  ),
-  INPUT_TASK = "Base",
-  INPUT_KEY = "base-4region",
-  MAKE_TARGETS = c("run-4region-fixM", "run-4region-fixVB_M"),
-  BASE_DIR = c("mfcl/inputs/2023_4region_fixM", "mfcl/inputs/2023_4region_fixVB_M"),
-  MODEL_DIR = c("model/2023R4_fixM", "model/2023R4_fixVB_M"),
-  COLLECT_PATHS = c(
-    "model/2023R4_fixM,mfcl/inputs/2023_4region_fixM",
-    "model/2023R4_fixVB_M,mfcl/inputs/2023_4region_fixVB_M"
-  ),
+  RUN_LABEL = "sens-noAgeSmoke",
+  JOB_KEY = "sens-noAgeSmoke",
+  MODEL_KEY = "sens-noAgeSmoke",
+  MODEL_TOKEN = "NoAgeSmoke",
+  MODEL_NAME = "BET no-age sensitivity smoke",
+  BASE_MODEL_KEY = "base-4r-smoke",
+  CHANGE_TOKEN = "NoAgeSmoke",
+  CHANGE_GROUP = "age-data",
+  CHANGE_SUMMARY = "Creates a no-age sensitivity recipe inspired by the BET report noAge sensitivity and runs a fast makepar smoke check.",
+  INPUT_VARIANT = "2023_4region_noAgeSmoke",
+  INPUT_TASK = bet_task_codes[["base"]],
+  INPUT_KEY = "base-4r-smoke",
+  SOURCE_REPO = "flow_checkout",
+  SOURCE_REF = "",
+  USE_FLOW_SOURCE = "1",
+  MFCL_BACKEND = "mfcl_smoke",
+  PROGRAM_PATH = bet_default_program,
+  MAKE_TARGETS = "mfcl-smoke",
+  BASE_DIR = "mfcl/inputs/2023_4region_noAgeSmoke",
+  MODEL_DIR = "model/sens-noAgeSmoke",
+  PATCH_SCRIPT = "patches/no_age_smoke.R",
+  PATCH_INPUT_DIR = bet_default_input_dir,
+  PATCH_OUTPUT_DIR = "mfcl/inputs/2023_4region_noAgeSmoke",
+  JOB_TITLE = "Sensitivity: NoAgeSmoke",
+  JOB_DESCRIPTION = "Builds a no-age sensitivity input recipe from the base 4-region input and runs a fast MFCL smoke check.",
+  COLLECT_PATHS = "model/base-4r-smoke,model/sens-noAgeSmoke,mfcl/inputs/2023_4region_noAgeSmoke",
   stringsAsFactors = FALSE
 )
 
 diagnostics_runs <- data.frame(
-  RUN_LABEL = c("diag-from-base", "diag-from-fixM"),
-  JOB_KEY = c("diag-from-base", "diag-from-fixM"),
-  MODEL_KEY = c("diag-from-base", "diag-from-fixM"),
-  MODEL_TOKEN = c("DiagBase", "DiagFixM"),
-  MODEL_NAME = c("Diagnostics from base", "Diagnostics from FixM"),
-  BASE_MODEL_KEY = c("base-4region", "base-4region"),
-  CHANGE_TOKEN = c("JitterSmoke", "JitterSmoke"),
+  RUN_LABEL = "diag-noAgeSmoke-jitter",
+  JOB_KEY = "diag-noAgeSmoke-jitter",
+  MODEL_KEY = "diag-noAgeSmoke-jitter",
+  MODEL_TOKEN = "NoAgeSmoke_Jitter",
+  MODEL_NAME = "BET no-age jitter diagnostics smoke",
+  BASE_MODEL_KEY = "base-4r-smoke",
+  CHANGE_TOKEN = "JitterSmoke",
   CHANGE_GROUP = "diagnostics",
-  CHANGE_SUMMARY = c(
-    "Runs a smoke jitter diagnostics job directly from the base model.",
-    "Runs a smoke jitter diagnostics job from the FixM sensitivity."
-  ),
-  INPUT_VARIANT = c("2023_4region", "2023_4region_fixM"),
-  PATCH_SCRIPT = "",
-  PATCH_INPUT_DIR = c("mfcl/inputs/2023_4region", "mfcl/inputs/2023_4region_fixM"),
-  PATCH_OUTPUT_DIR = c("mfcl/inputs/2023_4region", "mfcl/inputs/2023_4region_fixM"),
-  JOB_TITLE = c("Diagnostics: base smoke jitter", "Diagnostics: fixM smoke jitter"),
-  JOB_DESCRIPTION = c(
-    "Runs a light diagnostics pass directly from the base model.",
-    "Runs a light diagnostics pass from the fixM sensitivity model."
-  ),
-  INPUT_TASK = c("Base", "Sensitivity"),
-  INPUT_KEY = c("base-4region", "sens-fixM"),
-  MAKE_TARGETS = "jitter_smoke",
-  BASE_DIR = c("mfcl/inputs/2023_4region", "mfcl/inputs/2023_4region_fixM"),
-  MODEL_DIR = c("model/2023R4", "model/2023R4_fixM"),
-  JITTER_SEED = c(40, 41),
+  CHANGE_SUMMARY = "Runs a lightweight diagnostics aggregation from the NoAgeSmoke sensitivity output.",
+  INPUT_VARIANT = "2023_4region_noAgeSmoke",
+  INPUT_TASK = bet_task_codes[["sensitivity"]],
+  INPUT_KEY = "sens-noAgeSmoke",
+  SOURCE_REPO = "flow_checkout",
+  SOURCE_REF = "",
+  USE_FLOW_SOURCE = "1",
+  MFCL_BACKEND = "diagnostics_smoke",
+  PROGRAM_PATH = bet_default_program,
+  MAKE_TARGETS = "diagnostics-smoke",
+  BASE_DIR = "mfcl/inputs/2023_4region_noAgeSmoke",
+  MODEL_DIR = "model/diag-noAgeSmoke-jitter",
+  JITTER_SEED = 40,
   JITTER_SMOKE_ONLY = "1",
-  COLLECT_PATHS = c(
-    "model/2023R4/jitter,mfcl/inputs/2023_4region",
-    "model/2023R4_fixM/jitter,mfcl/inputs/2023_4region_fixM"
-  ),
+  PATCH_SCRIPT = "",
+  PATCH_INPUT_DIR = "",
+  PATCH_OUTPUT_DIR = "",
+  JOB_TITLE = "Diagnostics: NoAgeSmoke jitter",
+  JOB_DESCRIPTION = "Creates a short diagnostics summary from the selected no-age sensitivity smoke output.",
+  COLLECT_PATHS = "model/diag-noAgeSmoke-jitter",
   stringsAsFactors = FALSE
 )
 
 plot_runs <- data.frame(
-  RUN_LABEL = "plot-diagnostics",
-  JOB_KEY = "plot-diagnostics",
-  MODEL_KEY = "plot-diagnostics",
-  MODEL_TOKEN = "PlotDiagnostics",
-  MODEL_NAME = "Diagnostics plot package",
-  BASE_MODEL_KEY = "base-4region",
+  RUN_LABEL = "plot-depletion-smoke",
+  JOB_KEY = "plot-depletion-smoke",
+  MODEL_KEY = "plot-depletion-smoke",
+  MODEL_TOKEN = "PlotDepletionSmoke",
+  MODEL_NAME = "BET depletion smoke plot package",
+  BASE_MODEL_KEY = "base-4r-smoke",
   CHANGE_TOKEN = "Plot",
   CHANGE_GROUP = "plot",
-  CHANGE_SUMMARY = "Collects selected diagnostics outputs into a plotting package.",
-  JOB_TITLE = "Plot: diagnostics overview",
-  JOB_DESCRIPTION = "Creates a lightweight plot package from selected diagnostics outputs.",
-  INPUT_TASK = "Diagnostics",
-  INPUT_KEY = "diag-from-base",
-  PLOT_TITLE = "BET diagnostics overview",
-  PLOT_BACKEND = "manifest",
+  CHANGE_SUMMARY = "Collects selected smoke outputs into a simple depletion plot package.",
+  JOB_TITLE = "Plot: depletion smoke",
+  JOB_DESCRIPTION = "Creates a simple depletion plot from selected model and diagnostics outputs.",
+  INPUT_TASK = bet_task_codes[["diagnostics"]],
+  INPUT_KEY = "diag-noAgeSmoke-jitter",
+  PLOT_TITLE = "BET 2026 depletion smoke check",
+  PLOT_BACKEND = "mfclshiny",
+  MFCLSHINY_SCRIPT = "hooks/depletion_smoke.R",
   stringsAsFactors = FALSE
 )
 
 report_runs <- data.frame(
-  RUN_LABEL = "report-bet",
-  JOB_KEY = "report-bet",
-  MODEL_KEY = "report-bet",
-  MODEL_TOKEN = "ReportBET",
-  MODEL_NAME = "BET Kflow Quarto report",
-  BASE_MODEL_KEY = "base-4region",
+  RUN_LABEL = "report-depletion-smoke",
+  JOB_KEY = "report-depletion-smoke",
+  MODEL_KEY = "report-depletion-smoke",
+  MODEL_TOKEN = "ReportDepletionSmoke",
+  MODEL_NAME = "BET depletion smoke Quarto report",
+  BASE_MODEL_KEY = "base-4r-smoke",
   CHANGE_TOKEN = "Report",
   CHANGE_GROUP = "report",
-  CHANGE_SUMMARY = "Renders the selected plot outputs into a Quarto HTML report.",
-  JOB_TITLE = "Report: BET Kflow summary",
-  JOB_DESCRIPTION = "Renders a Quarto report from selected plot outputs.",
-  INPUT_TASK = "Plot",
-  INPUT_KEY = "plot-diagnostics",
-  REPORT_TITLE = "BET 2026 Kflow report",
+  CHANGE_SUMMARY = "Renders the selected depletion smoke plot into a Quarto HTML report.",
+  JOB_TITLE = "Report: BET depletion smoke",
+  JOB_DESCRIPTION = "Renders a Quarto report from the selected depletion smoke plot.",
+  INPUT_TASK = bet_task_codes[["plot"]],
+  INPUT_KEY = "plot-depletion-smoke",
+  REPORT_TITLE = "BET 2026 Kflow depletion smoke report",
   stringsAsFactors = FALSE
 )
 
@@ -179,12 +194,18 @@ common_env <- function(rows) {
   rows <- as.data.frame(rows, stringsAsFactors = FALSE)
   rows$SOURCE_REPO <- if ("SOURCE_REPO" %in% names(rows)) rows$SOURCE_REPO else bet_source_repo
   rows$SOURCE_REF <- if ("SOURCE_REF" %in% names(rows)) rows$SOURCE_REF else bet_source_ref
+  rows$USE_FLOW_SOURCE <- if ("USE_FLOW_SOURCE" %in% names(rows)) {
+    rows$USE_FLOW_SOURCE
+  } else {
+    ifelse(tolower(rows$SOURCE_REPO) %in% c("flow_checkout", "local", ".", "flow", "this"), "1", "0")
+  }
+  rows$USE_LOCAL_SOURCE <- if ("USE_LOCAL_SOURCE" %in% names(rows)) rows$USE_LOCAL_SOURCE else ""
   rows$MFCL_BACKEND <- if ("MFCL_BACKEND" %in% names(rows)) rows$MFCL_BACKEND else "mfcl_exe"
   rows$BACKEND_SCRIPT <- if ("BACKEND_SCRIPT" %in% names(rows)) rows$BACKEND_SCRIPT else ""
   rows$BACKEND_COMMAND <- if ("BACKEND_COMMAND" %in% names(rows)) rows$BACKEND_COMMAND else ""
   rows$MFCLKIT_SCRIPT <- if ("MFCLKIT_SCRIPT" %in% names(rows)) rows$MFCLKIT_SCRIPT else ""
   rows$MFCLSHINY_SCRIPT <- if ("MFCLSHINY_SCRIPT" %in% names(rows)) rows$MFCLSHINY_SCRIPT else ""
-  rows$PROGRAM_PATH <- if ("PROGRAM_PATH" %in% names(rows)) rows$PROGRAM_PATH else "mfcl/exe/mfclo64_2026"
+  rows$PROGRAM_PATH <- if ("PROGRAM_PATH" %in% names(rows)) rows$PROGRAM_PATH else bet_default_program
   rows$FLOW_GROUP <- if ("FLOW_GROUP" %in% names(rows)) rows$FLOW_GROUP else bet_flow_group
   rows$MODEL_KEY <- if ("MODEL_KEY" %in% names(rows)) rows$MODEL_KEY else rows$JOB_KEY
   rows$MODEL_TOKEN <- if ("MODEL_TOKEN" %in% names(rows)) rows$MODEL_TOKEN else rows$RUN_LABEL
@@ -206,9 +227,9 @@ input_selector_for_row <- function(row) {
   keys <- trimws(unlist(strsplit(key, ",")))
   keys <- keys[nzchar(keys)]
   if (length(keys) > 1) {
-    return(list(kflow_input_keys(task, keys)))
+    return(list(KflowKit::kflow_input_keys(task, keys)))
   }
-  list(kflow_input_key(task, keys))
+  list(KflowKit::kflow_input_key(task, keys))
 }
 
 # ---- Row builders ----------------------------------------------------------------
@@ -255,7 +276,7 @@ base_model <- function(job_key,
 sensitivity_model <- function(job_key,
                               token,
                               name,
-                              base_key = "base-4region",
+                              base_key = "base-4r-smoke",
                               make_targets,
                               base_dir,
                               model_dir,
@@ -282,7 +303,7 @@ sensitivity_model <- function(job_key,
     PATCH_OUTPUT_DIR = patch_output_dir,
     JOB_TITLE = paste("Sensitivity:", token),
     JOB_DESCRIPTION = change_summary,
-    INPUT_TASK = "Base",
+    INPUT_TASK = bet_task_codes[["base"]],
     INPUT_KEY = base_key,
     MAKE_TARGETS = make_targets,
     BASE_DIR = base_dir,
@@ -295,10 +316,11 @@ sensitivity_model <- function(job_key,
 # ---- Launch helpers --------------------------------------------------------------
 
 launch_rows <- function(task_code, target_folder, rows, tags = list(stage = target_folder), ...) {
+  bet_require_kflowkit()
   rows <- common_env(rows)
   lapply(seq_len(nrow(rows)), function(index) {
     row <- rows[index, , drop = FALSE]
-    kflow_job_launch(
+    KflowKit::kflow_job_launch(
       report_code = task_code,
       config = row,
       repo = bet_kflow_repo,
@@ -336,9 +358,10 @@ launch_rows_batched <- function(task_code,
 }
 
 register_tasks <- function(...) {
-  kflow_register_workflow(
+  bet_require_kflowkit()
+  KflowKit::kflow_register_workflow(
     paths = c("base", "sensitivity", "diagnostics", "plot", "report"),
-    codes = c("Base", "Sensitivity", "Diagnostics", "Plot", "Report"),
+    codes = unname(bet_task_codes[c("base", "sensitivity", "diagnostics", "plot", "report")]),
     repo = bet_kflow_repo,
     branch = bet_kflow_branch,
     target_folders = c("base", "sensitivity", "diagnostics", "plot", "report"),
@@ -348,23 +371,23 @@ register_tasks <- function(...) {
 }
 
 launch_base <- function(rows = base_models, ...) {
-  launch_rows("Base", "base", rows, tags = list(stage = "base"), ...)
+  launch_rows(bet_task_codes[["base"]], "base", rows, tags = list(stage = "base"), ...)
 }
 
 launch_sensitivity <- function(rows = sensitivity_models, ...) {
-  launch_rows("Sensitivity", "sensitivity", rows, tags = list(stage = "sensitivity"), ...)
+  launch_rows(bet_task_codes[["sensitivity"]], "sensitivity", rows, tags = list(stage = "sensitivity"), ...)
 }
 
 launch_diagnostics <- function(rows = diagnostics_runs, ...) {
-  launch_rows("Diagnostics", "diagnostics", rows, tags = list(stage = "diagnostics"), ...)
+  launch_rows(bet_task_codes[["diagnostics"]], "diagnostics", rows, tags = list(stage = "diagnostics"), ...)
 }
 
 launch_plot <- function(rows = plot_runs, ...) {
-  launch_rows("Plot", "plot", rows, tags = list(stage = "plot"), ...)
+  launch_rows(bet_task_codes[["plot"]], "plot", rows, tags = list(stage = "plot"), ...)
 }
 
 launch_report <- function(rows = report_runs, ...) {
-  launch_rows("Report", "report", rows, tags = list(stage = "report"), ...)
+  launch_rows(bet_task_codes[["report"]], "report", rows, tags = list(stage = "report"), ...)
 }
 
 diagnostics_from <- function(input_task,
@@ -382,7 +405,7 @@ diagnostics_from <- function(input_task,
     MODEL_KEY = job_key,
     MODEL_TOKEN = token,
     MODEL_NAME = title,
-    BASE_MODEL_KEY = if (identical(input_task, "Base")) input_key else "",
+    BASE_MODEL_KEY = if (identical(input_task, bet_task_codes[["base"]])) input_key else "",
     CHANGE_TOKEN = token,
     CHANGE_GROUP = "diagnostics",
     CHANGE_SUMMARY = paste("Runs diagnostics from", input_task, input_key),
@@ -441,11 +464,11 @@ launch_stage <- function(stage, rows, batch_size = Inf, limit = Inf, ...) {
   stage <- match.arg(stage, c("base", "sensitivity", "diagnostics", "plot", "report"))
   switch(
     stage,
-    base = launch_rows_batched("Base", "base", rows, batch_size = batch_size, limit = limit, tags = list(stage = "base"), ...),
-    sensitivity = launch_rows_batched("Sensitivity", "sensitivity", rows, batch_size = batch_size, limit = limit, tags = list(stage = "sensitivity"), ...),
-    diagnostics = launch_rows_batched("Diagnostics", "diagnostics", rows, batch_size = batch_size, limit = limit, tags = list(stage = "diagnostics"), ...),
-    plot = launch_rows_batched("Plot", "plot", rows, batch_size = batch_size, limit = limit, tags = list(stage = "plot"), ...),
-    report = launch_rows_batched("Report", "report", rows, batch_size = batch_size, limit = limit, tags = list(stage = "report"), ...)
+    base = launch_rows_batched(bet_task_codes[["base"]], "base", rows, batch_size = batch_size, limit = limit, tags = list(stage = "base"), ...),
+    sensitivity = launch_rows_batched(bet_task_codes[["sensitivity"]], "sensitivity", rows, batch_size = batch_size, limit = limit, tags = list(stage = "sensitivity"), ...),
+    diagnostics = launch_rows_batched(bet_task_codes[["diagnostics"]], "diagnostics", rows, batch_size = batch_size, limit = limit, tags = list(stage = "diagnostics"), ...),
+    plot = launch_rows_batched(bet_task_codes[["plot"]], "plot", rows, batch_size = batch_size, limit = limit, tags = list(stage = "plot"), ...),
+    report = launch_rows_batched(bet_task_codes[["report"]], "report", rows, batch_size = batch_size, limit = limit, tags = list(stage = "report"), ...)
   )
 }
 

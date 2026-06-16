@@ -1,11 +1,11 @@
-name: Report
-description: Render a Quarto report from selected plot outputs.
+name: bet2026-report
+description: Render a Quarto report from selected BET 2026 plot outputs.
 command: bash run.sh
 docker_image: ghcr.io/pacificcommunity/bet2026-flow:latest
 resources:
   cpus: 2
-  memory: 8GB
-  disk: 40GB
+  memory: 12GB
+  disk: 5GB
 output_patterns:
   - outputs/**
 job_config:
