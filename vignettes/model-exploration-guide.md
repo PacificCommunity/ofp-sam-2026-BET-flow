@@ -229,6 +229,7 @@ The repository is structured so `MFCL_BACKEND=mfclrtmb` can be added later
 through a backend script without changing the Kflow dependency layout.
 
 Private helper packages such as `mfclkit`, `mfclshiny`, `mfclrtmb`, and
-`KflowKit` can be updated at Docker container startup when `GIT_PAT` or
-`GITHUB_PAT` is available. The public smoke path still runs without exposing
-private package code.
+`KflowKit` can be updated at Docker container startup when
+`KFLOW_RUNTIME_UPDATE=auto` and `GIT_PAT` or `GITHUB_PAT` are available. The
+public smoke path keeps runtime updates off, so it runs without exposing private
+package code or contacting private GitHub repositories.

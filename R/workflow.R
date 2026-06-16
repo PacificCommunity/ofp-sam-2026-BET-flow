@@ -467,7 +467,12 @@ common_env <- function(rows) {
   rows$KFLOW_RUNTIME_REQUIRE_PRIVATE_PACKAGES <- if ("KFLOW_RUNTIME_REQUIRE_PRIVATE_PACKAGES" %in% names(rows)) {
     rows$KFLOW_RUNTIME_REQUIRE_PRIVATE_PACKAGES
   } else {
-    "true"
+    "false"
+  }
+  rows$KFLOW_RUNTIME_UPDATE <- if ("KFLOW_RUNTIME_UPDATE" %in% names(rows)) {
+    rows$KFLOW_RUNTIME_UPDATE
+  } else {
+    "off"
   }
   rows$MODEL_KEY <- if ("MODEL_KEY" %in% names(rows)) rows$MODEL_KEY else rows$JOB_KEY
   rows$MODEL_TOKEN <- if ("MODEL_TOKEN" %in% names(rows)) rows$MODEL_TOKEN else rows$RUN_LABEL
