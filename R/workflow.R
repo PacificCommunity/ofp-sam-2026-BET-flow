@@ -291,8 +291,8 @@ build_sensitivity_rows <- function(bases, recipes) {
         CHANGE_DETAIL = recipe$CHANGE_DETAIL,
         CHANGE_SUMMARY = paste(recipe$CHANGE_DETAIL, "Runs a fast makepar smoke check."),
         INPUT_VARIANT = input_variant,
-        INPUT_TASK = flow_task_codes[["base"]],
-        INPUT_KEY = base$JOB_KEY,
+        INPUT_TASK = "",
+        INPUT_KEY = "",
         SOURCE_REPO = base$SOURCE_REPO %||% flow_source_repo,
         SOURCE_REF = base$SOURCE_REF %||% flow_source_ref,
         SOURCE_PATH = base$SOURCE_PATH %||% "",
@@ -306,8 +306,8 @@ build_sensitivity_rows <- function(bases, recipes) {
         PATCH_INPUT_DIR = base$BASE_DIR,
         PATCH_OUTPUT_DIR = base_dir,
         JOB_TITLE = paste("Sensitivity:", recipe$RECIPE_TOKEN),
-        JOB_DESCRIPTION = paste("Builds", recipe$RECIPE_LABEL, "from", base$MODEL_TOKEN, "and runs a fast MFCL smoke check."),
-        COLLECT_PATHS = paste(base$MODEL_DIR, model_dir, base_dir, sep = ","),
+        JOB_DESCRIPTION = paste("Builds", recipe$RECIPE_LABEL, "from", base$MODEL_TOKEN, "input settings and runs a fast MFCL smoke check."),
+        COLLECT_PATHS = paste(model_dir, base_dir, sep = ","),
         stringsAsFactors = FALSE
       )
       recipe_env_cols <- grep("^INPUT_RECIPE_", names(recipe), value = TRUE)
