@@ -436,6 +436,21 @@ report_runs <- data.frame(
   stringsAsFactors = FALSE
 )
 
+# ---- Runtime package defaults ----------------------------------------------------
+
+runtime_package_specs <- function(backend) {
+  base_specs <- c(
+    "mfclkit=PacificCommunity/ofp-sam-mfclkit@main",
+    "mfclshiny=PacificCommunity/mfclshiny@main",
+    "KflowKit=kyuhank/KflowKit@main"
+  )
+  backend <- tolower(as.character(backend %||% "mfcl_exe"))
+  if (identical(backend, "mfclrtmb")) {
+    return(paste(c("mfclrtmb=PacificCommunity/ofp-sam-mfclrtmb@main", base_specs), collapse = ","))
+  }
+  paste(base_specs, collapse = ",")
+}
+
 # ---- Row normalization -----------------------------------------------------------
 #
 # common_env() fills in defaults and standard metadata columns. It accepts extra
@@ -467,12 +482,27 @@ common_env <- function(rows) {
   rows$KFLOW_RUNTIME_REQUIRE_PRIVATE_PACKAGES <- if ("KFLOW_RUNTIME_REQUIRE_PRIVATE_PACKAGES" %in% names(rows)) {
     rows$KFLOW_RUNTIME_REQUIRE_PRIVATE_PACKAGES
   } else {
-    "true"
+    "false"
   }
   rows$KFLOW_RUNTIME_UPDATE <- if ("KFLOW_RUNTIME_UPDATE" %in% names(rows)) {
     rows$KFLOW_RUNTIME_UPDATE
   } else {
+    "off"
+  }
+  rows$TUNA_FLOW_RUNTIME_REQUIRE_PRIVATE_PACKAGES <- if ("TUNA_FLOW_RUNTIME_REQUIRE_PRIVATE_PACKAGES" %in% names(rows)) {
+    rows$TUNA_FLOW_RUNTIME_REQUIRE_PRIVATE_PACKAGES
+  } else {
+    "true"
+  }
+  rows$TUNA_FLOW_RUNTIME_UPDATE <- if ("TUNA_FLOW_RUNTIME_UPDATE" %in% names(rows)) {
+    rows$TUNA_FLOW_RUNTIME_UPDATE
+  } else {
     "auto"
+  }
+  rows$KFLOW_RUNTIME_PACKAGES <- if ("KFLOW_RUNTIME_PACKAGES" %in% names(rows)) {
+    rows$KFLOW_RUNTIME_PACKAGES
+  } else {
+    vapply(rows$MFCL_BACKEND, runtime_package_specs, character(1))
   }
   rows$KFLOW_RUNTIME_GITHUB_AUTH <- if ("KFLOW_RUNTIME_GITHUB_AUTH" %in% names(rows)) {
     rows$KFLOW_RUNTIME_GITHUB_AUTH

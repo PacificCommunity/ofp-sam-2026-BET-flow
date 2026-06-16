@@ -32,6 +32,15 @@ drop_runtime_tokens() {
   unset GIT_PAT GITHUB_PAT GH_TOKEN KFLOW_GITHUB_TOKEN KFLOW_PERSONAL_TOKEN
 }
 
+prepare_runtime_package_update() {
+  if [[ -n "${TUNA_FLOW_RUNTIME_UPDATE:-}" ]]; then
+    export KFLOW_RUNTIME_UPDATE="${TUNA_FLOW_RUNTIME_UPDATE}"
+  fi
+  if [[ -n "${TUNA_FLOW_RUNTIME_REQUIRE_PRIVATE_PACKAGES:-}" ]]; then
+    export KFLOW_RUNTIME_REQUIRE_PRIVATE_PACKAGES="${TUNA_FLOW_RUNTIME_REQUIRE_PRIVATE_PACKAGES}"
+  fi
+}
+
 run_runtime_package_update() {
   local update_status
   if [[ -z "${R_LIBS_USER:-}" ]]; then
@@ -63,6 +72,7 @@ elif [[ -f configs/default.env ]]; then
 fi
 
 mkdir -p "${OUTPUT_DIR:-outputs}" "${INPUT_DIR:-inputs}"
+prepare_runtime_package_update
 run_runtime_package_update
 drop_runtime_tokens
 Rscript task.R
