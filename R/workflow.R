@@ -419,7 +419,7 @@ report_runs <- data.frame(
   BASE_MODEL_KEY = flow_base_job_key,
   CHANGE_TOKEN = "Report",
   CHANGE_GROUP = "report",
-  CHANGE_SUMMARY = "Renders the selected depletion smoke plot into a Quarto HTML report.",
+  CHANGE_SUMMARY = "Renders the selected depletion smoke plot into a Quarto PDF report.",
   JOB_TITLE = paste("Report:", flow_species, "depletion smoke"),
   JOB_DESCRIPTION = "Renders a Quarto report from the selected depletion smoke plot.",
   INPUT_TASK = flow_task_codes[["plot"]],

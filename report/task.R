@@ -5,7 +5,9 @@ kflow_write_manifest(ctx$input_dir, file.path(ctx$out_dir, "input-manifest.csv")
 
 registry_files <- list.files(ctx$input_dir, pattern = "^model-registry[.]csv$", recursive = TRUE, full.names = TRUE)
 summary_files <- list.files(ctx$input_dir, pattern = "summary[.]csv$", recursive = TRUE, full.names = TRUE)
-plot_files <- list.files(ctx$input_dir, pattern = "[.](svg|png|jpg|jpeg)$", recursive = TRUE, full.names = TRUE, ignore.case = TRUE)
+render_format <- tolower(kflow_env("REPORT_RENDER_FORMAT", "pdf"))
+plot_pattern <- if (identical(render_format, "pdf")) "[.](svg|png|jpg|jpeg|pdf)$" else "[.](svg|png|jpg|jpeg)$"
+plot_files <- list.files(ctx$input_dir, pattern = plot_pattern, recursive = TRUE, full.names = TRUE, ignore.case = TRUE)
 relative_plot_path <- function(path) {
   gsub("\\\\", "/", substring(normalizePath(path, winslash = "/", mustWork = FALSE), nchar(normalizePath(ctx$input_dir, winslash = "/", mustWork = FALSE)) + 2))
 }
@@ -24,6 +26,19 @@ if (length(plot_files)) {
     ifelse(grepl("[.]png$", rel_paths, ignore.case = TRUE), 0L, 1L),
     rel_paths
   )]
+  rel_paths <- vapply(plot_files, relative_plot_path, character(1))
+  if (identical(render_format, "pdf")) {
+    has_non_svg <- any(!grepl("[.]svg$", rel_paths, ignore.case = TRUE))
+    if (has_non_svg) {
+      keep_non_svg <- !grepl("[.]svg$", rel_paths, ignore.case = TRUE)
+      plot_files <- plot_files[keep_non_svg]
+      rel_paths <- rel_paths[keep_non_svg]
+    }
+  }
+  figure_keys <- tolower(tools::file_path_sans_ext(basename(rel_paths)))
+  plot_files <- plot_files[!duplicated(figure_keys)]
+  file_hashes <- as.character(tools::md5sum(plot_files))
+  plot_files <- plot_files[!duplicated(file_hashes)]
 }
 
 registries <- kflow_read_csv_union(registry_files)
@@ -33,7 +48,6 @@ utils::write.csv(summaries, file.path(ctx$out_dir, "report-input-summaries.csv")
 
 template_dir_setting <- kflow_env("REPORT_TEMPLATE_DIR", "templates/tuna-assessment")
 template_main <- kflow_env("REPORT_TEMPLATE_MAIN", "assessment.qmd")
-render_format <- kflow_env("REPORT_RENDER_FORMAT", "pdf")
 title <- kflow_env("REPORT_TITLE", "Tuna Kflow report")
 report_file_stem <- kflow_env("REPORT_FILE_STEM", "tuna-flow-report")
 quarto_available <- nzchar(Sys.which("quarto"))
@@ -96,7 +110,10 @@ table_section <- c(
   "# Kflow Model Summary",
   "",
   "```{r kflow-model-registry, echo=FALSE, message=FALSE, warning=FALSE}",
-  "registry <- read.csv('kflow-inputs/report-input-registry.csv', stringsAsFactors = FALSE)",
+  "safe_read_csv <- function(path) {",
+  "  tryCatch(read.csv(path, stringsAsFactors = FALSE), error = function(e) data.frame())",
+  "}",
+  "registry <- safe_read_csv('kflow-inputs/report-input-registry.csv')",
   "columns <- intersect(c('stage', 'model_token', 'model_label', 'change_token', 'change_group', 'parent_model_token', 'recipe_token', 'flow_species', 'flow_assessment_year'), names(registry))",
   "if (nrow(registry) && length(columns)) {",
   "  print(utils::head(registry[columns], 30))",
@@ -106,7 +123,7 @@ table_section <- c(
   "```",
   "",
   "```{r kflow-job-summaries, echo=FALSE, message=FALSE, warning=FALSE}",
-  "summaries <- read.csv('kflow-inputs/report-input-summaries.csv', stringsAsFactors = FALSE)",
+  "summaries <- safe_read_csv('kflow-inputs/report-input-summaries.csv')",
   "if (nrow(summaries)) {",
   "  print(utils::head(summaries, 30))",
   "} else {",

@@ -40,7 +40,7 @@ png_file <- file.path(out_dir, "depletion-smoke.png")
 report_figure_dir <- file.path(out_dir, "report-figures")
 dir.create(report_figure_dir, recursive = TRUE, showWarnings = FALSE)
 mfclshiny_status <- "not_available"
-mfclshiny_figure_dir <- file.path(out_dir, "mfclshiny-report-figures")
+mfclshiny_figure_dir <- report_figure_dir
 
 if (isTRUE(package_status$available[package_status$package == "mfclshiny"]) &&
     "build_report_figures" %in% getNamespaceExports("mfclshiny")) {
@@ -50,7 +50,7 @@ if (isTRUE(package_status$available[package_status$package == "mfclshiny"]) &&
       output_dir = mfclshiny_figure_dir,
       title = plot_title,
       figure_basename = "model-exploration-overview",
-      formats = c("svg", "png"),
+      formats = c("png", "pdf", "svg"),
       build_payloads = FALSE,
       overwrite = TRUE
     )
