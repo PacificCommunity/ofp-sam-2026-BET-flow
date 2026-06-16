@@ -20,9 +20,10 @@ variants, and parent-child links easy to inspect.
 
 ## What is Kflow?
 
-Kflow is a lightweight workflow layer for launching dependency-aware analysis
-jobs from R. It is designed for work where many Docker-based jobs need to run on
-remote compute, pass outputs to downstream jobs, and remain easy to audit later.
+Kflow is a lightweight workflow layer developed by Kyuhan Kim for launching
+dependency-aware analysis jobs from R. It is designed for work where many
+Docker-based jobs need to run on remote compute, pass outputs to downstream
+jobs, and remain easy to audit later.
 
 This repository uses Kflow for a concrete BET assessment workflow. The broader
 Kflow tooling is still evolving. If there is wider interest, the general Kflow
