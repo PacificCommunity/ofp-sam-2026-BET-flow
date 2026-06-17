@@ -202,7 +202,7 @@ The report job writes:
 
 The report job is registered separately as `bet-2026-report`. It clones
 `PacificCommunity/ofp-sam-bet2026-report`, renders `assessment-report.qmd`,
-copies upstream Kflow figures into
+copies upstream report-ready figures into
 the report, and renders only the compact report outputs. That lets you rerun
 only the report stage from an existing plot job:
 

@@ -107,7 +107,7 @@ report_source_ref <- kflow_env("REPORT_SOURCE_REF", "main")
 report_source_path <- kflow_env("REPORT_SOURCE_PATH", "")
 template_dir_setting <- kflow_env("REPORT_TEMPLATE_DIR", "templates/tuna-assessment")
 template_main <- kflow_env("REPORT_TEMPLATE_MAIN", kflow_env("REPORT_MAIN", if (nzchar(report_source_repo)) "assessment-report.qmd" else "assessment.qmd"))
-title <- kflow_env("REPORT_TITLE", if (nzchar(report_source_repo)) "" else "Tuna Kflow report")
+title <- kflow_env("REPORT_TITLE", if (nzchar(report_source_repo)) "" else "Tuna assessment report")
 report_file_stem <- kflow_env("REPORT_FILE_STEM", if (nzchar(report_source_repo)) "bet-2026-report" else "tuna-flow-report")
 effective_render_format <- render_format
 report_ext <- if (identical(effective_render_format, "pdf")) "pdf" else "html"
@@ -166,12 +166,23 @@ if (nzchar(title) && file.exists(report_config_file)) {
   }
 }
 
-input_dir_template <- file.path(render_dir, "kflow-inputs")
+input_dir_template <- file.path(render_dir, "pipeline-inputs")
 dir.create(input_dir_template, recursive = TRUE, showWarnings = FALSE)
-invisible(file.copy(file.path(ctx$out_dir, "report-input-registry.csv"), input_dir_template, overwrite = TRUE))
-invisible(file.copy(file.path(ctx$out_dir, "report-input-summaries.csv"), input_dir_template, overwrite = TRUE))
+target_input_dirs <- input_dir_template
+if (kflow_bool("REPORT_WRITE_LEGACY_INPUT_DIRS", FALSE)) {
+  target_input_dirs <- c(
+    target_input_dirs,
+    file.path(render_dir, "workflow-inputs"),
+    file.path(render_dir, "kflow-inputs")
+  )
+}
+for (target_dir in target_input_dirs) {
+  dir.create(target_dir, recursive = TRUE, showWarnings = FALSE)
+  invisible(file.copy(file.path(ctx$out_dir, "report-input-registry.csv"), target_dir, overwrite = TRUE))
+  invisible(file.copy(file.path(ctx$out_dir, "report-input-summaries.csv"), target_dir, overwrite = TRUE))
+}
 
-figure_dir_setting <- kflow_env("REPORT_FIGURE_DIR", if (nzchar(report_source_repo)) "Figures/kflow" else "Figures")
+figure_dir_setting <- kflow_env("REPORT_FIGURE_DIR", if (nzchar(report_source_repo)) "Figures/generated" else "Figures")
 plot_dir <- file.path(render_dir, figure_dir_setting)
 dir.create(plot_dir, recursive = TRUE, showWarnings = FALSE)
 copied <- character()
@@ -224,27 +235,27 @@ dir.create(section_dir, recursive = TRUE, showWarnings = FALSE)
 rewrite_tables_default <- !nzchar(report_source_repo) || !file.exists(file.path(section_dir, "Tables.qmd"))
 if (kflow_bool("REPORT_REWRITE_TABLES", rewrite_tables_default)) {
   table_section <- c(
-    "# Kflow Model Summary",
+    "# Model Summary",
     "",
-    "```{r kflow-model-registry, echo=FALSE, message=FALSE, warning=FALSE}",
+    "```{r model-registry, echo=FALSE, message=FALSE, warning=FALSE}",
     "safe_read_csv <- function(path) {",
     "  tryCatch(read.csv(path, stringsAsFactors = FALSE), error = function(e) data.frame())",
     "}",
-    "registry <- safe_read_csv('kflow-inputs/report-input-registry.csv')",
+    "registry <- safe_read_csv('pipeline-inputs/report-input-registry.csv')",
     "columns <- intersect(c('stage', 'model_token', 'model_label', 'change_token', 'change_group', 'parent_model_token', 'recipe_token', 'flow_species', 'flow_assessment_year'), names(registry))",
     "if (nrow(registry) && length(columns)) {",
     "  print(utils::head(registry[columns], 30))",
     "} else {",
-    "  cat('No Kflow registry rows were provided.')",
+    "  cat('No model registry rows were provided.')",
     "}",
     "```",
     "",
-    "```{r kflow-job-summaries, echo=FALSE, message=FALSE, warning=FALSE}",
-    "summaries <- safe_read_csv('kflow-inputs/report-input-summaries.csv')",
+    "```{r job-summaries, echo=FALSE, message=FALSE, warning=FALSE}",
+    "summaries <- safe_read_csv('pipeline-inputs/report-input-summaries.csv')",
     "if (nrow(summaries)) {",
     "  print(utils::head(summaries, 30))",
     "} else {",
-    "  cat('No Kflow summary rows were provided.')",
+    "  cat('No model summary rows were provided.')",
     "}",
     "```"
   )
@@ -257,13 +268,13 @@ if (kflow_bool("REPORT_REWRITE_FIGURES", rewrite_figures_default)) {
     c(
       "# Figures",
       "",
-      "Kflow-generated figures from upstream plot jobs.",
+      "Pipeline-generated figures from upstream plot jobs.",
       "",
       unlist(lapply(seq_along(copied), function(index) {
         c(
           sprintf("## %s", figure_label(copied_sources[[index]])),
           "",
-          sprintf("![](%s){#fig-kflow-%03d fig-align=\"center\" width=100%%}", copied[[index]], index),
+          sprintf("![](%s){#fig-pipeline-%03d fig-align=\"center\" width=100%%}", copied[[index]], index),
           ""
         )
       }), use.names = FALSE)
