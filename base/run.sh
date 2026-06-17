@@ -48,6 +48,13 @@ runtime_packages_disabled() {
   esac
 }
 
+runtime_updates_disabled() {
+  case "${KFLOW_RUNTIME_UPDATE:-off}" in
+    ""|0|false|FALSE|no|NO|off|OFF|none|NONE|skip|SKIP) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
 ensure_runtime_library() {
   local preferred="${R_LIBS_USER:-${KFLOW_RUNTIME_LIBRARY:-}}"
   local fallback="${PWD}/.R-library"
@@ -71,6 +78,9 @@ install_runtime_cran_dependencies() {
   if runtime_packages_disabled; then
     return 0
   fi
+  if runtime_updates_disabled; then
+    return 0
+  fi
   case "${KFLOW_RUNTIME_PACKAGES:-}" in
     *mfclrtmb=*)
       Rscript -e 'lib <- Sys.getenv("R_LIBS_USER"); if (!nzchar(lib)) stop("R_LIBS_USER is required for runtime installs", call. = FALSE); dir.create(lib, recursive = TRUE, showWarnings = FALSE); .libPaths(unique(c(lib, .libPaths()))); options(repos = c(CRAN = "https://cloud.r-project.org")); pkgs <- c("TMB", "RTMB"); missing <- setdiff(pkgs, rownames(utils::installed.packages())); if (length(missing)) utils::install.packages(missing, lib = lib, dependencies = TRUE, repos = getOption("repos")); missing <- pkgs[!vapply(pkgs, requireNamespace, logical(1), quietly = TRUE)]; if (length(missing)) { message("[kflow-runtime-update] Required CRAN package(s) unavailable after install: ", paste(missing, collapse = ", ")); quit(save = "no", status = 45) }' ;;
@@ -80,6 +90,9 @@ install_runtime_cran_dependencies() {
 run_runtime_package_update() {
   local update_status
   if runtime_packages_disabled; then
+    return 0
+  fi
+  if runtime_updates_disabled; then
     return 0
   fi
   ensure_runtime_library
@@ -101,6 +114,9 @@ run_runtime_package_update() {
 
 install_missing_runtime_packages() {
   if runtime_packages_disabled; then
+    return 0
+  fi
+  if runtime_updates_disabled; then
     return 0
   fi
   ensure_runtime_library
@@ -187,7 +203,7 @@ verify_runtime_packages() {
   if runtime_packages_disabled; then
     return 0
   fi
-  Rscript -e 'lib <- Sys.getenv("R_LIBS_USER"); if (nzchar(lib)) .libPaths(unique(c(lib, .libPaths()))); spec <- Sys.getenv("KFLOW_RUNTIME_PACKAGES"); parts <- trimws(strsplit(spec, ",", fixed = TRUE)[[1]]); parts <- parts[nzchar(parts) & grepl("=", parts, fixed = TRUE)]; pkgs <- sub("=.*$", "", parts); missing <- pkgs[!vapply(pkgs, requireNamespace, logical(1), quietly = TRUE)]; if (length(missing)) { message("[kflow-runtime-update] Required runtime package(s) unavailable after update: ", paste(missing, collapse = ", ")); quit(save = "no", status = 44) }'
+  Rscript -e 'lib <- Sys.getenv("R_LIBS_USER"); if (nzchar(lib)) .libPaths(unique(c(lib, .libPaths()))); spec <- Sys.getenv("KFLOW_RUNTIME_PACKAGES"); parts <- trimws(strsplit(spec, ",", fixed = TRUE)[[1]]); parts <- parts[nzchar(parts) & grepl("=", parts, fixed = TRUE)]; pkgs <- sub("=.*$", "", parts); missing <- pkgs[!vapply(pkgs, requireNamespace, logical(1), quietly = TRUE)]; if (length(missing)) { message("[kflow-runtime-update] Required runtime package(s) unavailable in runtime image/library: ", paste(missing, collapse = ", ")); quit(save = "no", status = 44) }'
 }
 
 if [[ -n "${KFLOW_JOB_CONFIG_FILE:-}" ]]; then

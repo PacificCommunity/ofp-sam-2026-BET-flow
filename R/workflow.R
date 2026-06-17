@@ -505,6 +505,10 @@ runtime_package_specs <- function(backend, stage = "", plot_backend = "", mfclsh
 
 common_env <- function(rows) {
   rows <- as.data.frame(rows, stringsAsFactors = FALSE)
+  runtime_require_provided <- "KFLOW_RUNTIME_REQUIRE_PRIVATE_PACKAGES" %in% names(rows)
+  runtime_update_provided <- "KFLOW_RUNTIME_UPDATE" %in% names(rows)
+  runtime_auth_provided <- "KFLOW_RUNTIME_GITHUB_AUTH" %in% names(rows)
+  runtime_forward_token_provided <- "KFLOW_FORWARD_GITHUB_TOKEN_TO_RUNTIME" %in% names(rows)
   rows$SOURCE_REPO <- if ("SOURCE_REPO" %in% names(rows)) rows$SOURCE_REPO else flow_source_repo
   rows$SOURCE_REF <- if ("SOURCE_REF" %in% names(rows)) rows$SOURCE_REF else flow_source_ref
   rows$SOURCE_PATH <- if ("SOURCE_PATH" %in% names(rows)) rows$SOURCE_PATH else flow_source_path
@@ -553,22 +557,22 @@ common_env <- function(rows) {
   rows$KFLOW_RUNTIME_REQUIRE_PRIVATE_PACKAGES <- if ("KFLOW_RUNTIME_REQUIRE_PRIVATE_PACKAGES" %in% names(rows)) {
     rows$KFLOW_RUNTIME_REQUIRE_PRIVATE_PACKAGES
   } else {
-    "false"
+    ""
   }
   rows$KFLOW_RUNTIME_UPDATE <- if ("KFLOW_RUNTIME_UPDATE" %in% names(rows)) {
     rows$KFLOW_RUNTIME_UPDATE
   } else {
-    "off"
+    ""
   }
   rows$TUNA_FLOW_RUNTIME_REQUIRE_PRIVATE_PACKAGES <- if ("TUNA_FLOW_RUNTIME_REQUIRE_PRIVATE_PACKAGES" %in% names(rows)) {
     rows$TUNA_FLOW_RUNTIME_REQUIRE_PRIVATE_PACKAGES
   } else {
-    "false"
+    ""
   }
   rows$TUNA_FLOW_RUNTIME_UPDATE <- if ("TUNA_FLOW_RUNTIME_UPDATE" %in% names(rows)) {
     rows$TUNA_FLOW_RUNTIME_UPDATE
   } else {
-    "auto"
+    ""
   }
   rows$KFLOW_RUNTIME_PACKAGES <- if ("KFLOW_RUNTIME_PACKAGES" %in% names(rows)) {
     rows$KFLOW_RUNTIME_PACKAGES
@@ -585,15 +589,27 @@ common_env <- function(rows) {
       USE.NAMES = FALSE
     )
   }
-  rows$KFLOW_RUNTIME_GITHUB_AUTH <- if ("KFLOW_RUNTIME_GITHUB_AUTH" %in% names(rows)) {
+  disabled_runtime_specs <- c("", "0", "false", "no", "off", "none", "skip")
+  runtime_specs_disabled <- tolower(trimws(rows$KFLOW_RUNTIME_PACKAGES)) %in% disabled_runtime_specs
+  if (!isTRUE(runtime_require_provided)) {
+    rows$KFLOW_RUNTIME_REQUIRE_PRIVATE_PACKAGES <- ifelse(
+      runtime_specs_disabled,
+      "false",
+      "true"
+    )
+  }
+  if (!isTRUE(runtime_update_provided)) {
+    rows$KFLOW_RUNTIME_UPDATE <- ifelse(runtime_specs_disabled, "off", "auto")
+  }
+  rows$KFLOW_RUNTIME_GITHUB_AUTH <- if (isTRUE(runtime_auth_provided)) {
     rows$KFLOW_RUNTIME_GITHUB_AUTH
   } else {
-    "true"
+    ifelse(runtime_specs_disabled, "false", "true")
   }
-  rows$KFLOW_FORWARD_GITHUB_TOKEN_TO_RUNTIME <- if ("KFLOW_FORWARD_GITHUB_TOKEN_TO_RUNTIME" %in% names(rows)) {
+  rows$KFLOW_FORWARD_GITHUB_TOKEN_TO_RUNTIME <- if (isTRUE(runtime_forward_token_provided)) {
     rows$KFLOW_FORWARD_GITHUB_TOKEN_TO_RUNTIME
   } else {
-    "true"
+    ifelse(runtime_specs_disabled, "false", "true")
   }
   rows$MODEL_KEY <- if ("MODEL_KEY" %in% names(rows)) rows$MODEL_KEY else rows$JOB_KEY
   rows$MODEL_TOKEN <- if ("MODEL_TOKEN" %in% names(rows)) rows$MODEL_TOKEN else rows$RUN_LABEL
