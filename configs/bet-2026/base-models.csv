@@ -1,0 +1,2 @@
+JOB_KEY,MODEL_TOKEN,MODEL_NAME,BASE_DIR,INPUT_VARIANT,MODEL_DIR,JOB_TITLE,DESCRIPTION,MFCL_BACKEND,MAKE_TARGETS
+base,Base,BET 2026 base,mfcl/inputs/2023_4region_1007,2023_4region_1007,model/base,Base: Base,Runs the BET 2026 base model from the 4-region input.,mfcl_full,mfcl-full

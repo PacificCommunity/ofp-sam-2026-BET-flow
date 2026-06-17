@@ -1031,7 +1031,10 @@ kflow_write_fallback_payload <- function(out_dir, stage) {
     summary = kflow_read_csv_file(file.path(out_dir, "kflow-job-summary.csv")),
     smoke = kflow_read_csv_file(file.path(out_dir, "mfcl-smoke-summary.csv")),
     diagnostics = kflow_read_csv_file(file.path(out_dir, "diagnostics-summary.csv")),
-    depletion = kflow_read_csv_file(file.path(out_dir, "depletion-smoke.csv")),
+    depletion = {
+      primary <- kflow_read_csv_file(file.path(out_dir, "depletion.csv"))
+      if (nrow(primary)) primary else kflow_read_csv_file(file.path(out_dir, "depletion-smoke.csv"))
+    },
     mfcl_log = kflow_read_csv_file(file.path(out_dir, "mfcl-log-summary.csv")),
     created_at = format(Sys.time(), "%Y-%m-%d %H:%M:%S %z")
   )
@@ -1049,7 +1052,20 @@ kflow_write_stage_payload <- function(out_dir, stage, model_dir = "") {
   invisible(file.path(out_dir, "model_payload.rds"))
 }
 
-kflow_compact_outputs <- function(out_dir, keep = c("model_payload.rds", "model-registry.csv", "depletion-smoke.csv")) {
+kflow_compact_outputs <- function(out_dir,
+                                  keep = c(
+                                    "model_payload.rds",
+                                    "model-registry.csv",
+                                    "depletion.csv",
+                                    "depletion-smoke.csv",
+                                    "mfcl-run-summary.csv",
+      "mfcl-smoke-summary.csv",
+      "diagnostics-summary.csv",
+      "selftest-summary.csv",
+      "model-payload-status.txt",
+      "mfcl-log-summary.csv",
+      "mfcl-log-errors.txt"
+                                  )) {
   if (!kflow_bool("COMPACT_OUTPUTS", TRUE)) {
     return(invisible(FALSE))
   }
@@ -1073,6 +1089,175 @@ kflow_compact_outputs <- function(out_dir, keep = c("model_payload.rds", "model-
     }
   }
   invisible(TRUE)
+}
+
+kflow_bind_rows <- function(...) {
+  tables <- list(...)
+  if (length(tables) == 1L && is.list(tables[[1]]) && !is.data.frame(tables[[1]])) {
+    tables <- tables[[1]]
+  }
+  tables <- Filter(function(x) is.data.frame(x) && (nrow(x) > 0 || ncol(x) > 0), tables)
+  if (!length(tables)) {
+    return(data.frame())
+  }
+  columns <- unique(unlist(lapply(tables, names), use.names = FALSE))
+  tables <- lapply(tables, function(x) {
+    missing <- setdiff(columns, names(x))
+    for (name in missing) {
+      x[[name]] <- NA_character_
+    }
+    x[columns]
+  })
+  do.call(rbind, tables)
+}
+
+kflow_detect_model_file <- function(model_dir, pattern, label, preferred = "", required = TRUE) {
+  if (nzchar(preferred)) {
+    candidate <- file.path(model_dir, preferred)
+    if (file.exists(candidate)) {
+      return(preferred)
+    }
+    if (isTRUE(required)) {
+      stop(label, " file was requested but not found: ", candidate, call. = FALSE)
+    }
+  }
+  candidates <- list.files(model_dir, pattern = pattern, full.names = FALSE, ignore.case = TRUE)
+  if (!length(candidates)) {
+    if (isTRUE(required)) {
+      stop("No ", label, " file found in ", model_dir, call. = FALSE)
+    }
+    return("")
+  }
+  if (length(candidates) > 1L) {
+    kflow_note("Multiple ", label, " files found; using first: ", candidates[[1]])
+  }
+  candidates[[1]]
+}
+
+kflow_write_mfcl_run_summary <- function(model_dir,
+                                         out_dir,
+                                         stage,
+                                         run_mode,
+                                         program,
+                                         frq,
+                                         ini,
+                                         input_par,
+                                         output_par,
+                                         footer,
+                                         log_summary) {
+  summary <- data.frame(
+    stage = stage,
+    run_label = kflow_env("RUN_LABEL", ""),
+    job_key = kflow_env("JOB_KEY", ""),
+    model_key = kflow_env("MODEL_KEY", ""),
+    model_token = kflow_env("MODEL_TOKEN", ""),
+    change_token = kflow_env("CHANGE_TOKEN", ""),
+    input_dir = kflow_env("BASE_DIR", ""),
+    model_dir = kflow_env("MODEL_DIR", ""),
+    executable = basename(program),
+    run_mode = run_mode,
+    run_script = kflow_env("MFCL_FULL_SCRIPT", kflow_env("MFCL_RUN_SCRIPT", "")),
+    frq = frq,
+    ini = ini,
+    input_par = input_par,
+    output_par = output_par,
+    par_size = if (nzchar(output_par) && file.exists(file.path(model_dir, output_par))) file.info(file.path(model_dir, output_par))$size else NA_real_,
+    objective = footer[["objective"]],
+    max_gradient = footer[["max_gradient"]],
+    mfcl_log_error_count = log_summary$error_count[[1]],
+    mfcl_log_warning_count = log_summary$warning_count[[1]],
+    stringsAsFactors = FALSE
+  )
+  utils::write.csv(summary, file.path(model_dir, "mfcl-run-summary.csv"), row.names = FALSE)
+  utils::write.csv(summary, file.path(out_dir, "mfcl-run-summary.csv"), row.names = FALSE)
+  invisible(summary)
+}
+
+kflow_run_mfcl_full <- function(source_dir, out_dir, stage, log_file = NULL) {
+  base_dir <- file.path(source_dir, kflow_env("BASE_DIR", kflow_env("FLOW_BASE_INPUT_DIR", "mfcl/inputs/base")))
+  model_dir <- file.path(source_dir, kflow_env("MODEL_DIR", file.path("model", kflow_env("JOB_KEY", "model"))))
+  if (!dir.exists(base_dir)) {
+    stop(sprintf("MFCL input directory was not found: %s", base_dir), call. = FALSE)
+  }
+
+  kflow_copy_tree(base_dir, model_dir)
+  program <- kflow_mfcl_program(source_dir)
+  frq <- kflow_detect_model_file(model_dir, "\\.frq$", ".frq", preferred = kflow_env("MFCL_FRQ", ""))
+  ini <- kflow_detect_model_file(model_dir, "\\.ini$", ".ini", preferred = kflow_env("MFCL_INI", ""))
+  run_script <- kflow_env("MFCL_FULL_SCRIPT", kflow_env("MFCL_RUN_SCRIPT", "doitall.sh"))
+  run_script_path <- file.path(model_dir, run_script)
+  if (!file.exists(run_script_path)) {
+    stop(sprintf("MFCL full run script was not found: %s", run_script_path), call. = FALSE)
+  }
+
+  input_par <- kflow_env("MFCL_FULL_INPUT_PAR", kflow_latest_par(model_dir))
+  kflow_note("Running full MFCL script ", run_script, " in ", model_dir, log_file = log_file)
+  command <- sprintf("PROGRAM_PATH=%s sh %s", shQuote(program), shQuote(run_script))
+  kflow_run_shell(
+    command,
+    workdir = model_dir,
+    log_file = log_file,
+    sanitize_env = TRUE,
+    live_stream = kflow_env("MFCL_FULL_LIVE_LOG_STREAM", "stderr")
+  )
+
+  output_par_name <- kflow_env("MFCL_FULL_OUTPUT_PAR", "")
+  if (!nzchar(output_par_name)) {
+    output_par_name <- kflow_latest_par(model_dir)
+  }
+  if (!nzchar(output_par_name) || !file.exists(file.path(model_dir, output_par_name))) {
+    stop("MFCL full run completed but no output .par file was found.", call. = FALSE)
+  }
+
+  log_summary <- kflow_mfcl_log_summary(log_file, out_dir, model_dir)
+  footer <- kflow_par_footer(file.path(model_dir, output_par_name))
+  kflow_write_smoke_model_info(
+    model_dir = model_dir,
+    stage = stage,
+    run_mode = "full_script",
+    program = program,
+    frq = frq,
+    ini = ini,
+    input_par = input_par,
+    output_par = output_par_name,
+    footer = footer,
+    log_summary = log_summary
+  )
+  kflow_try_build_mfclshiny_payload(model_dir, out_dir, output_par_name = output_par_name, log_file = log_file)
+  summary <- kflow_write_mfcl_run_summary(
+    model_dir = model_dir,
+    out_dir = out_dir,
+    stage = stage,
+    run_mode = "full_script",
+    program = program,
+    frq = frq,
+    ini = ini,
+    input_par = input_par,
+    output_par = output_par_name,
+    footer = footer,
+    log_summary = log_summary
+  )
+
+  payload_timeseries <- kflow_extract_payload_timeseries(
+    file.path(model_dir, "model_payload.rds"),
+    stage = stage,
+    input_par = input_par,
+    output_par = output_par_name,
+    log_file = log_file
+  )
+  if (!nrow(payload_timeseries)) {
+    kflow_write_payload_debug_summary(file.path(model_dir, "model_payload.rds"), out_dir)
+    if (kflow_bool("MFCL_REQUIRE_DERIVED", kflow_bool("KFLOW_REQUIRE_MFCL_DERIVED", TRUE))) {
+      stop("MFCL full run completed but no payload-derived timeseries were available.", call. = FALSE)
+    }
+    payload_timeseries <- kflow_write_smoke_depletion(model_dir, stage)
+    payload_timeseries$derived_source <- "synthetic_full_run_fallback"
+  }
+  kflow_assert_key_quantities(payload_timeseries, context = "MFCL full run payload")
+  utils::write.csv(payload_timeseries, file.path(model_dir, "depletion.csv"), row.names = FALSE)
+  utils::write.csv(payload_timeseries, file.path(out_dir, "depletion.csv"), row.names = FALSE)
+  kflow_write_manifest(model_dir, file.path(model_dir, "model-manifest.csv"))
+  invisible(summary)
 }
 
 kflow_run_mfcl_smoke <- function(source_dir, out_dir, stage, log_file = NULL) {
@@ -1217,12 +1402,27 @@ kflow_run_mfcl_smoke <- function(source_dir, out_dir, stage, log_file = NULL) {
 }
 
 kflow_run_diagnostics_smoke <- function(source_dir, out_dir, stage = "diagnostics", log_file = NULL) {
+  backend <- tolower(kflow_env("MFCL_BACKEND", "diagnostics_smoke"))
+  mode <- tolower(kflow_env("SELFTEST_MODE", if (identical(backend, "selftest")) "summary" else "jitter"))
+  mode_label <- switch(
+    mode,
+    jitter = "jitter",
+    retrospective = "retrospective",
+    retro = "retrospective",
+    hessian = "hessian",
+    likprof = "likprof",
+    likelihood = "likprof",
+    profile = "likprof",
+    selftest = "selftest",
+    summary = "selftest",
+    mode
+  )
   model_dir <- file.path(source_dir, kflow_env("MODEL_DIR", file.path("model", kflow_env("JOB_KEY", "diagnostics"))))
   dir.create(model_dir, recursive = TRUE, showWarnings = FALSE)
   input_dir <- kflow_env("INPUT_DIR", "inputs")
   search_roots <- unique(normalizePath(c(source_dir, input_dir), winslash = "/", mustWork = FALSE))
   depletion_files <- unique(unlist(lapply(search_roots, function(root) {
-    list.files(root, pattern = "^depletion-smoke[.]csv$", recursive = TRUE, full.names = TRUE)
+    list.files(root, pattern = "^depletion(-smoke)?[.]csv$", recursive = TRUE, full.names = TRUE)
   }), use.names = FALSE))
   depletion <- kflow_read_csv_union(depletion_files)
   if (nrow(depletion)) {
@@ -1245,27 +1445,46 @@ kflow_run_diagnostics_smoke <- function(source_dir, out_dir, stage = "diagnostic
     diagnostic$recipe_token <- kflow_env("RECIPE_TOKEN", diagnostic$change_token[[1]])
     diagnostic$recipe_family <- kflow_env("RECIPE_FAMILY", kflow_env("CHANGE_GROUP", ""))
     diagnostic$recipe_label <- kflow_env("RECIPE_LABEL", diagnostic$change_token[[1]])
-    diagnostic$source <- "diagnostics_smoke_from_parent"
-    diagnostic$derived_source <- "diagnostics_smoke_from_parent"
-    diagnostic$model_role <- "diagnostics"
-    diagnostic$depletion <- round(pmax(0.05, pmin(0.95, as.numeric(diagnostic$depletion) + 0.005)), 3)
-    if ("spawning_potential" %in% names(diagnostic)) {
-      diagnostic$spawning_potential <- round(suppressWarnings(as.numeric(diagnostic$spawning_potential)) * 1.005, 6)
+    diagnostic$source <- paste0("selftest_", mode_label, "_from_parent")
+    diagnostic$derived_source <- paste0("selftest_", mode_label, "_from_parent")
+    diagnostic$model_role <- mode_label
+    seed <- suppressWarnings(as.integer(kflow_env("SELFTEST_SEED", kflow_env("JITTER_SEED", "40"))))
+    if (!is.finite(seed)) {
+      seed <- 40L
     }
-    if ("recruitment" %in% names(diagnostic)) {
-      diagnostic$recruitment <- round(suppressWarnings(as.numeric(diagnostic$recruitment)) * 0.995, 6)
+    set.seed(seed)
+    if (mode_label %in% c("jitter", "retrospective", "likprof")) {
+      perturb <- if (identical(mode_label, "retrospective")) -0.004 else 0.005
+      if (identical(mode_label, "likprof")) {
+        perturb <- 0
+      }
+      diagnostic$depletion <- round(pmax(0.05, pmin(0.95, as.numeric(diagnostic$depletion) + perturb)), 3)
+      if ("spawning_potential" %in% names(diagnostic)) {
+        diagnostic$spawning_potential <- round(suppressWarnings(as.numeric(diagnostic$spawning_potential)) * (1 + perturb), 6)
+      }
+      if ("recruitment" %in% names(diagnostic)) {
+        diagnostic$recruitment <- round(suppressWarnings(as.numeric(diagnostic$recruitment)) * (1 - perturb), 6)
+      }
+      if ("fishing_mortality" %in% names(diagnostic)) {
+        diagnostic$fishing_mortality <- round(suppressWarnings(as.numeric(diagnostic$fishing_mortality)) * (1 + perturb), 6)
+      }
     }
-    if ("fishing_mortality" %in% names(diagnostic)) {
-      diagnostic$fishing_mortality <- round(suppressWarnings(as.numeric(diagnostic$fishing_mortality)) * 1.005, 6)
+    if (identical(mode_label, "retrospective")) {
+      diagnostic$peel <- suppressWarnings(as.integer(kflow_env("RETRO_PEEL", "1")))
+    } else if (!"peel" %in% names(diagnostic)) {
+      diagnostic$peel <- 0L
     }
-    depletion <- rbind(parent, diagnostic)
+    depletion <- kflow_bind_rows(parent, diagnostic)
+    utils::write.csv(depletion, file.path(model_dir, "depletion.csv"), row.names = FALSE)
     utils::write.csv(depletion, file.path(model_dir, "depletion-smoke.csv"), row.names = FALSE)
   } else {
     depletion <- kflow_write_smoke_depletion(model_dir, stage)
-    depletion$model_role <- "diagnostics"
-    depletion$derived_source <- "synthetic_diagnostics_smoke_fallback"
+    depletion$model_role <- mode_label
+    depletion$derived_source <- paste0("synthetic_selftest_", mode_label, "_fallback")
+    utils::write.csv(depletion, file.path(model_dir, "depletion.csv"), row.names = FALSE)
     utils::write.csv(depletion, file.path(model_dir, "depletion-smoke.csv"), row.names = FALSE)
   }
+  utils::write.csv(depletion, file.path(out_dir, "depletion.csv"), row.names = FALSE)
   utils::write.csv(depletion, file.path(out_dir, "depletion-smoke.csv"), row.names = FALSE)
   final_year <- suppressWarnings(max(as.integer(depletion$year), na.rm = TRUE))
   final <- depletion[depletion$year == final_year & depletion$model_key == kflow_env("MODEL_KEY", kflow_env("JOB_KEY", "")), , drop = FALSE]
@@ -1275,7 +1494,9 @@ kflow_run_diagnostics_smoke <- function(source_dir, out_dir, stage = "diagnostic
     job_key = kflow_env("JOB_KEY", ""),
     parent_task = kflow_env("INPUT_TASK", ""),
     parent_key = kflow_env("INPUT_KEY", ""),
-    diagnostic = kflow_env("CHANGE_TOKEN", "JitterSmoke"),
+    diagnostic = kflow_env("CHANGE_TOKEN", "Selftest"),
+    selftest_mode = mode_label,
+    selftest_seed = suppressWarnings(as.integer(kflow_env("SELFTEST_SEED", kflow_env("JITTER_SEED", "40")))),
     final_year = final_year,
     mean_final_depletion = round(mean(as.numeric(final$depletion), na.rm = TRUE), 3),
     input_depletion_files = length(depletion_files),
@@ -1283,9 +1504,11 @@ kflow_run_diagnostics_smoke <- function(source_dir, out_dir, stage = "diagnostic
   )
   utils::write.csv(diagnostics, file.path(model_dir, "diagnostics-summary.csv"), row.names = FALSE)
   utils::write.csv(diagnostics, file.path(out_dir, "diagnostics-summary.csv"), row.names = FALSE)
+  utils::write.csv(diagnostics, file.path(model_dir, "selftest-summary.csv"), row.names = FALSE)
+  utils::write.csv(diagnostics, file.path(out_dir, "selftest-summary.csv"), row.names = FALSE)
   saveRDS(
     list(
-      payload_type = "kflow_smoke_diagnostics",
+      payload_type = "kflow_selftest",
       payload_version = 1L,
       stage = stage,
       diagnostics = diagnostics,
@@ -1297,7 +1520,7 @@ kflow_run_diagnostics_smoke <- function(source_dir, out_dir, stage = "diagnostic
     compress = "xz"
   )
   kflow_write_manifest(model_dir, file.path(model_dir, "model-manifest.csv"))
-  kflow_note("Wrote diagnostics smoke summary from ", length(depletion_files), " depletion files.", log_file = log_file)
+  kflow_note("Wrote ", mode_label, " selftest summary from ", length(depletion_files), " depletion files.", log_file = log_file)
   invisible(diagnostics)
 }
 
@@ -1378,7 +1601,11 @@ kflow_run_backend <- function(source_dir, out_dir, stage, log_file = NULL) {
     kflow_run_make_targets(source_dir, kflow_env("MAKE_TARGETS", ""), log_file = log_file)
   } else if (identical(backend, "mfcl_smoke")) {
     kflow_run_mfcl_smoke(source_dir, out_dir, stage, log_file = log_file)
+  } else if (identical(backend, "mfcl_full")) {
+    kflow_run_mfcl_full(source_dir, out_dir, stage, log_file = log_file)
   } else if (identical(backend, "diagnostics_smoke")) {
+    kflow_run_diagnostics_smoke(source_dir, out_dir, stage, log_file = log_file)
+  } else if (identical(backend, "selftest")) {
     kflow_run_diagnostics_smoke(source_dir, out_dir, stage, log_file = log_file)
   } else if (identical(backend, "mfclrtmb")) {
     command <- kflow_env("BACKEND_COMMAND", "")

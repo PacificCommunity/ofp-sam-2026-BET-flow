@@ -1,0 +1,5 @@
+RECIPE_TOKEN,RECIPE_KEY,RECIPE_FAMILY,RECIPE_LABEL,INPUT_VARIANT_SUFFIX,PATCH_SCRIPT,CHANGE_DETAIL,INPUT_RECIPE_FIXED_PARAMS,INPUT_RECIPE_INDEX_CV_HALF,INPUT_RECIPE_SEL_NODES,MFCL_BACKEND,MAKE_TARGETS
+FixM,fixM,natural-mortality,Fix M,fixM,scripts/run-mfcl-input-recipe.R,Fix natural mortality estimation switches and rerun the model.,M,0,,mfcl_full,mfcl-full
+FixVB,fixVB,growth,Fix VB,fixVB,scripts/run-mfcl-input-recipe.R,Fix growth estimation switches and rerun the model.,VB,0,,mfcl_full,mfcl-full
+Sel4,sel4,selectivity,Sel 4,sel4,scripts/run-mfcl-input-recipe.R,Set selectivity spline nodes to 4 and rerun the model.,,0,4,mfcl_full,mfcl-full
+IndexCvHalf,indexCvHalf,index-cv,Index CV half,index_cv_half,scripts/run-mfcl-input-recipe.R,Halve index CPUE CV flags and rerun the model.,,1,,mfcl_full,mfcl-full

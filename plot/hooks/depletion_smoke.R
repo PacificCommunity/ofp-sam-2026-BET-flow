@@ -1,6 +1,7 @@
 input_dir <- Sys.getenv("KFLOW_INPUT_DIR", "inputs")
 out_dir <- Sys.getenv("KFLOW_OUT_DIR", "outputs")
-plot_title <- Sys.getenv("PLOT_TITLE", "Tuna key quantities smoke check")
+plot_title <- Sys.getenv("PLOT_TITLE", "Tuna key quantities")
+figure_basename <- Sys.getenv("REPORT_FIGURE_BASENAME", "key-quantities")
 
 dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
 
@@ -11,9 +12,9 @@ package_status <- data.frame(
 )
 utils::write.csv(package_status, file.path(out_dir, "plot-package-status.csv"), row.names = FALSE)
 
-depletion_files <- list.files(input_dir, pattern = "^depletion-smoke[.]csv$", recursive = TRUE, full.names = TRUE)
+depletion_files <- list.files(input_dir, pattern = "^depletion(-smoke)?[.]csv$", recursive = TRUE, full.names = TRUE)
 if (!length(depletion_files)) {
-  stop("No depletion-smoke.csv files were found in upstream inputs.", call. = FALSE)
+  stop("No depletion.csv or depletion-smoke.csv files were found in upstream inputs.", call. = FALSE)
 }
 
 read_one <- function(file) {
@@ -38,15 +39,16 @@ if (!"model_key" %in% names(depletion)) {
 }
 depletion$model_key[is.na(depletion$model_key) | !nzchar(depletion$model_key)] <- depletion$model_token[is.na(depletion$model_key) | !nzchar(depletion$model_key)]
 if (!"change_token" %in% names(depletion)) {
-  depletion$change_token <- depletion$model_token
+  depletion$change_token <- ""
 }
-depletion$change_token[is.na(depletion$change_token) | !nzchar(depletion$change_token)] <- depletion$model_token[is.na(depletion$change_token) | !nzchar(depletion$change_token)]
+depletion$change_token[is.na(depletion$change_token)] <- ""
 if (!"plot_label" %in% names(depletion)) {
   depletion$plot_label <- if ("model_token" %in% names(depletion)) depletion$model_token else depletion$model_key
 }
 if (!"report_label" %in% names(depletion)) {
   depletion$report_label <- depletion$plot_label
 }
+utils::write.csv(depletion, file.path(out_dir, "depletion-combined.csv"), row.names = FALSE)
 utils::write.csv(depletion, file.path(out_dir, "depletion-smoke-combined.csv"), row.names = FALSE)
 utils::write.csv(depletion, file.path(out_dir, "key-quantities-combined.csv"), row.names = FALSE)
 
@@ -69,8 +71,8 @@ if (is.null(quantity_long) || !nrow(quantity_long)) {
 }
 utils::write.csv(quantity_long, file.path(out_dir, "key-quantities-long.csv"), row.names = FALSE)
 
-plot_file <- file.path(out_dir, "key-quantities-smoke.svg")
-png_file <- file.path(out_dir, "key-quantities-smoke.png")
+plot_file <- file.path(out_dir, paste0(figure_basename, ".svg"))
+png_file <- file.path(out_dir, paste0(figure_basename, ".png"))
 report_figure_dir <- file.path(out_dir, "report-figures")
 dir.create(report_figure_dir, recursive = TRUE, showWarnings = FALSE)
 mfclshiny_status <- "not_available"
@@ -83,7 +85,7 @@ if (isTRUE(package_status$available[package_status$package == "mfclshiny"]) &&
       data = depletion,
       output_dir = mfclshiny_figure_dir,
       title = plot_title,
-      figure_basename = "key-quantities-smoke",
+      figure_basename = figure_basename,
       formats = c("png", "pdf", "svg"),
       width = 12,
       height = 8,
@@ -97,8 +99,8 @@ if (isTRUE(package_status$available[package_status$package == "mfclshiny"]) &&
       report_args$plot_style <- "shiny_stock"
     }
     result <- do.call(mfclshiny::build_report_figures, report_args)
-    svg_src <- file.path(mfclshiny_figure_dir, "key-quantities-smoke.svg")
-    png_src <- file.path(mfclshiny_figure_dir, "key-quantities-smoke.png")
+    svg_src <- file.path(mfclshiny_figure_dir, paste0(figure_basename, ".svg"))
+    png_src <- file.path(mfclshiny_figure_dir, paste0(figure_basename, ".png"))
     if (file.exists(svg_src)) {
       invisible(file.copy(svg_src, plot_file, overwrite = TRUE))
     }
@@ -137,7 +139,7 @@ if ((!file.exists(plot_file) || !file.exists(png_file)) && requireNamespace("ggp
     ggplot2::facet_grid(ggplot2::vars(quantity_label), ggplot2::vars(region), scales = "free_y") +
     ggplot2::labs(
       title = plot_title,
-      subtitle = "MFCL smoke key derived quantities from payload or RepOut extraction",
+      subtitle = "MFCL key derived quantities from payload or RepOut extraction",
       x = NULL,
       y = "Value",
       colour = "Model"
@@ -182,10 +184,10 @@ if (!file.exists(png_file) && file.exists(plot_file) && requireNamespace("rsvg",
   rsvg::rsvg_png(plot_file, png_file, width = 1600, height = 800)
 }
 if (file.exists(png_file)) {
-  file.copy(png_file, file.path(report_figure_dir, "key-quantities-smoke.png"), overwrite = TRUE)
+  file.copy(png_file, file.path(report_figure_dir, paste0(figure_basename, ".png")), overwrite = TRUE)
 }
 if (file.exists(plot_file)) {
-  file.copy(plot_file, file.path(report_figure_dir, "key-quantities-smoke.svg"), overwrite = TRUE)
+  file.copy(plot_file, file.path(report_figure_dir, paste0(figure_basename, ".svg")), overwrite = TRUE)
 }
 
 summary <- stats::aggregate(
@@ -197,8 +199,9 @@ names(summary)[names(summary) == "value"] <- "mean_value"
 summary$plot_file <- basename(plot_file)
 report_figures <- list.files(report_figure_dir, pattern = "[.]png$", recursive = TRUE, full.names = FALSE)
 report_figures <- sort(file.path("report-figures", report_figures))
-summary$report_figure <- if ("report-figures/key-quantities-smoke.png" %in% report_figures) {
-  "report-figures/key-quantities-smoke.png"
+preferred_report_figure <- file.path("report-figures", paste0(figure_basename, ".png"))
+summary$report_figure <- if (preferred_report_figure %in% report_figures) {
+  preferred_report_figure
 } else if ("report-figures/depletion-smoke.png" %in% report_figures) {
   "report-figures/depletion-smoke.png"
 } else if (length(report_figures)) {

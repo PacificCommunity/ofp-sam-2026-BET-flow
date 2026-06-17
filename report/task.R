@@ -28,12 +28,16 @@ scan_plot_files <- function(root) {
 }
 
 plot_priority <- function(rel) {
-  if (grepl("(^|/)report-figures/key-quantities-smoke[.]png$", rel, ignore.case = TRUE)) return(1L)
-  if (grepl("(^|/)key-quantities-smoke[.]png$", rel, ignore.case = TRUE)) return(2L)
-  if (grepl("(^|/)report-figures/depletion-smoke[.]png$", rel, ignore.case = TRUE)) return(3L)
-  if (grepl("(^|/)depletion-smoke[.]png$", rel, ignore.case = TRUE)) return(4L)
-  if (grepl("(^|/)report-figures/", rel, ignore.case = TRUE)) return(5L)
-  if (grepl("model-exploration-overview[.](png|svg)$", rel, ignore.case = TRUE)) return(6L)
+  if (grepl("(^|/)report-figures/key-quantities[.]png$", rel, ignore.case = TRUE)) return(1L)
+  if (grepl("(^|/)key-quantities[.]png$", rel, ignore.case = TRUE)) return(2L)
+  if (grepl("(^|/)report-figures/key-quantities-smoke[.]png$", rel, ignore.case = TRUE)) return(3L)
+  if (grepl("(^|/)key-quantities-smoke[.]png$", rel, ignore.case = TRUE)) return(4L)
+  if (grepl("(^|/)report-figures/depletion[.]png$", rel, ignore.case = TRUE)) return(5L)
+  if (grepl("(^|/)depletion[.]png$", rel, ignore.case = TRUE)) return(6L)
+  if (grepl("(^|/)report-figures/depletion-smoke[.]png$", rel, ignore.case = TRUE)) return(7L)
+  if (grepl("(^|/)depletion-smoke[.]png$", rel, ignore.case = TRUE)) return(8L)
+  if (grepl("(^|/)report-figures/", rel, ignore.case = TRUE)) return(9L)
+  if (grepl("model-exploration-overview[.](png|svg)$", rel, ignore.case = TRUE)) return(10L)
   20L
 }
 
@@ -41,6 +45,12 @@ figure_label <- function(rel) {
   stem <- tolower(tools::file_path_sans_ext(basename(rel)))
   if (identical(stem, "key-quantities-smoke")) {
     return("Key derived quantities")
+  }
+  if (identical(stem, "key-quantities")) {
+    return("Key derived quantities")
+  }
+  if (identical(stem, "depletion")) {
+    return("Depletion")
   }
   if (identical(stem, "depletion-smoke")) {
     return("Depletion")
@@ -279,6 +289,52 @@ if (isTRUE(copy_figure_tree) && length(figure_input_roots)) {
   }
 }
 
+table_input_files <- list.files(
+  ctx$input_dir,
+  pattern = "[.]csv$",
+  recursive = TRUE,
+  full.names = TRUE,
+  ignore.case = TRUE
+)
+table_input_files <- table_input_files[
+  grepl("(^|/)report-figures/tables/", table_input_files, ignore.case = TRUE) |
+    grepl("(^|/)(table-index|mfclshiny-table-index)[.]csv$", table_input_files, ignore.case = TRUE)
+]
+generated_table_dir <- file.path(render_dir, "tables", "generated")
+generated_table_out_dir <- file.path(ctx$out_dir, "report-tables")
+dir.create(generated_table_dir, recursive = TRUE, showWarnings = FALSE)
+dir.create(generated_table_out_dir, recursive = TRUE, showWarnings = FALSE)
+copied_tables <- character()
+if (length(table_input_files)) {
+  for (table_file in unique(table_input_files[file.exists(table_input_files)])) {
+    target <- basename(table_file)
+    target_path <- file.path(generated_table_dir, target)
+    if (file.exists(target_path) && !identical(normalizePath(table_file, winslash = "/", mustWork = FALSE), normalizePath(target_path, winslash = "/", mustWork = FALSE))) {
+      target <- sprintf("table-%03d-%s", length(copied_tables) + 1L, basename(table_file))
+      target_path <- file.path(generated_table_dir, target)
+    }
+    file.copy(table_file, target_path, overwrite = TRUE)
+    file.copy(table_file, file.path(generated_table_out_dir, target), overwrite = TRUE)
+    copied_tables <- c(copied_tables, file.path("tables", "generated", target))
+  }
+}
+table_metadata_files <- table_input_files[grepl("(^|/)(table-index|mfclshiny-table-index)[.]csv$", table_input_files, ignore.case = TRUE)]
+table_metadata <- kflow_read_csv_union(table_metadata_files)
+if (nrow(table_metadata)) {
+  utils::write.csv(table_metadata, file.path(generated_table_dir, "generated-table-index.csv"), row.names = FALSE)
+  utils::write.csv(table_metadata, file.path(generated_table_out_dir, "generated-table-index.csv"), row.names = FALSE)
+  copied_tables <- c(copied_tables, file.path("tables", "generated", "generated-table-index.csv"))
+}
+utils::write.csv(
+  data.frame(
+    table_file = copied_tables,
+    source_count = length(table_input_files),
+    stringsAsFactors = FALSE
+  ),
+  file.path(generated_table_out_dir, "generated-table-files.csv"),
+  row.names = FALSE
+)
+
 existing_render_figures <- list.files(file.path(render_dir, "Figures"), pattern = plot_pattern, recursive = TRUE, full.names = TRUE, ignore.case = TRUE)
 if (!length(copied) && !length(existing_render_figures) && kflow_bool("REPORT_REQUIRE_PLOTS", FALSE)) {
   stop("REPORT_REQUIRE_PLOTS is true but no upstream or report-source plot images were found.", call. = FALSE)
@@ -373,6 +429,9 @@ if (is.na(rendered_report)) {
 }
 final_report_file <- basename(report_file)
 invisible(file.copy(rendered_report, file.path(ctx$out_dir, final_report_file), overwrite = TRUE))
+report_out_dir <- file.path(ctx$out_dir, "report")
+dir.create(report_out_dir, recursive = TRUE, showWarnings = FALSE)
+invisible(file.copy(rendered_report, file.path(report_out_dir, final_report_file), overwrite = TRUE))
 
 report_summary <- data.frame(
   run_label = kflow_env("RUN_LABEL", ""),
@@ -380,8 +439,9 @@ report_summary <- data.frame(
   registry_rows = nrow(registries),
   summary_rows = nrow(summaries),
   upstream_plot_files = nrow(plot_index),
-  copied_plot_files = length(copied),
-  report_source_repo = report_source_repo,
+	  copied_plot_files = length(copied),
+	  copied_table_files = length(copied_tables),
+	  report_source_repo = report_source_repo,
   report_source_ref = report_source_ref,
   report_source_path = report_source_path,
   primary_plot_file = if (length(copied)) copied[[1]] else "",
@@ -401,7 +461,11 @@ kflow_compact_outputs(
   ctx$out_dir,
   keep = c(
     final_report_file,
+    file.path("report", final_report_file),
     "report-summary.csv",
-    "model-registry.csv"
+    "report-input-registry.csv",
+    "report-input-summaries.csv",
+    "model-registry.csv",
+    file.path("report-tables", list.files(generated_table_out_dir, recursive = TRUE, full.names = FALSE))
   )
 )

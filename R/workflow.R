@@ -54,6 +54,45 @@ flow_split_csv <- function(value) {
   trimws(parts[nzchar(trimws(parts))])
 }
 
+flow_bool_value <- function(value, default = FALSE) {
+  if (is.null(value) || !length(value) || is.na(value[[1]]) || !nzchar(as.character(value[[1]]))) {
+    return(default)
+  }
+  tolower(trimws(as.character(value[[1]]))) %in% c("1", "true", "yes", "y", "on")
+}
+
+flow_bind_rows <- function(...) {
+  tables <- list(...)
+  if (length(tables) == 1L && is.list(tables[[1]]) && !is.data.frame(tables[[1]])) {
+    tables <- tables[[1]]
+  }
+  tables <- Filter(function(x) is.data.frame(x) && (nrow(x) > 0 || ncol(x) > 0), tables)
+  if (!length(tables)) {
+    return(data.frame())
+  }
+  columns <- unique(unlist(lapply(tables, names), use.names = FALSE))
+  tables <- lapply(tables, function(x) {
+    missing <- setdiff(columns, names(x))
+    for (name in missing) {
+      x[[name]] <- NA_character_
+    }
+    x[columns]
+  })
+  do.call(rbind, tables)
+}
+
+flow_first_col <- function(row, names, default = "") {
+  for (name in names) {
+    if (name %in% names(row)) {
+      value <- as.character(row[[name]][[1]])
+      if (!is.na(value) && nzchar(value)) {
+        return(value)
+      }
+    }
+  }
+  default
+}
+
 flow_slug <- function(x) {
   x <- tolower(gsub("[^A-Za-z0-9]+", "-", as.character(x)))
   gsub("^-+|-+$", "", x)
@@ -90,6 +129,24 @@ flow_project_tag <- flow_env_any(c("FLOW_PROJECT_TAG", "TUNA_FLOW_PROJECT_TAG"),
 flow_flow_group <- paste(flow_project_tag, flow_species_slug, format(Sys.time(), "%Y%m%d-%H%M%S"), sep = "-")
 flow_kflow_repo <- flow_env_any(c("FLOW_KFLOW_REPO", "TUNA_FLOW_REPO"), "PacificCommunity/ofp-sam-tuna-flow")
 flow_kflow_branch <- flow_env_any(c("FLOW_KFLOW_BRANCH", "TUNA_FLOW_BRANCH"), "main")
+flow_config_file <- flow_env("FLOW_CONFIG", "")
+flow_config_dir_default <- if (nzchar(flow_config_file)) {
+  tools::file_path_sans_ext(flow_config_file)
+} else {
+  file.path("configs", flow_assessment_slug)
+}
+flow_config_dir <- flow_env_any(c("FLOW_TABLE_DIR", "TUNA_FLOW_TABLE_DIR"), flow_config_dir_default)
+flow_table_path <- function(file) {
+  file.path(flow_config_dir, file)
+}
+flow_read_table <- function(file, env_names = character()) {
+  override <- flow_env_any(env_names, "")
+  path <- if (nzchar(override)) override else flow_table_path(file)
+  if (!nzchar(path) || !file.exists(path)) {
+    return(data.frame())
+  }
+  utils::read.csv(path, stringsAsFactors = FALSE, check.names = FALSE)
+}
 flow_source_repo <- flow_env_any(
   c("FLOW_SOURCE_REPO", "TUNA_FLOW_SOURCE_REPO"),
   paste0("PacificCommunity/ofp-sam-", flow_assessment_slug, "-inputs")
@@ -105,9 +162,19 @@ flow_report_path <- flow_env_any(c("FLOW_REPORT_PATH", "TUNA_FLOW_REPORT_PATH"),
 flow_report_main <- flow_env_any(c("FLOW_REPORT_MAIN", "TUNA_FLOW_REPORT_MAIN"), "assessment-report.qmd")
 flow_docker_image <- flow_env_any(
   c("FLOW_DOCKER_IMAGE", "TUNA_FLOW_DOCKER_IMAGE"),
-  "ghcr.io/pacificcommunity/tuna-flow:latest"
+  "ghcr.io/pacificcommunity/tuna-flow:v1.5"
 )
-flow_task_codes <- setNames(paste(flow_task_prefix, c("base", "sensitivity", "diagnostics", "plot", "report"), sep = "-"), c(
+flow_run_mode <- tolower(flow_env_any(c("FLOW_RUN_MODE", "TUNA_FLOW_RUN_MODE"), "smoke"))
+flow_is_full_run <- flow_run_mode %in% c("full", "production", "assessment", "e2e")
+flow_model_backend <- flow_env_any(
+  c("FLOW_MODEL_BACKEND", "TUNA_FLOW_MODEL_BACKEND"),
+  if (isTRUE(flow_is_full_run)) "mfcl_full" else "mfcl_smoke"
+)
+flow_model_make_targets <- flow_env_any(
+  c("FLOW_MODEL_MAKE_TARGETS", "TUNA_FLOW_MODEL_MAKE_TARGETS"),
+  if (identical(flow_model_backend, "mfcl_full")) "mfcl-full" else "mfcl-smoke"
+)
+flow_task_codes <- setNames(paste(flow_task_prefix, c("base", "sensitivity", "selftest", "plot", "report"), sep = "-"), c(
   "base", "sensitivity", "diagnostics", "plot", "report"
 ))
 flow_task_codes[["report"]] <- flow_env_any(
@@ -121,7 +188,7 @@ if (!length(flow_base_input_dirs)) {
   flow_base_input_dirs <- flow_default_input_dir
 }
 flow_default_input_variant <- flow_env_any(c("FLOW_BASE_INPUT_VARIANT", "TUNA_FLOW_BASE_INPUT_VARIANT"), basename(flow_base_input_dirs[[1]]))
-flow_base_job_key <- flow_env_any(c("FLOW_BASE_JOB_KEY", "TUNA_FLOW_BASE_JOB_KEY"), "base-smoke")
+flow_base_job_key <- flow_env_any(c("FLOW_BASE_JOB_KEY", "TUNA_FLOW_BASE_JOB_KEY"), if (isTRUE(flow_is_full_run)) "base" else "base-smoke")
 flow_base_token <- flow_env_any(c("FLOW_BASE_TOKEN", "TUNA_FLOW_BASE_TOKEN"), "Base")
 flow_report_file_stem <- flow_env_any(c("FLOW_REPORT_FILE_STEM", "TUNA_FLOW_REPORT_FILE_STEM"), paste(flow_task_prefix, "report", sep = "-"))
 flow_ini_version_target <- flow_env_any(c("FLOW_MFCL_INI_VERSION_TARGET", "MFCL_INI_VERSION_TARGET"), "1007")
@@ -131,6 +198,10 @@ flow_base_names <- flow_split_csv(flow_env_any(c("FLOW_BASE_NAMES", "TUNA_FLOW_B
 flow_starter_sensitivity_tokens <- flow_split_csv(flow_env_any(
   c("FLOW_STARTER_SENSITIVITIES", "TUNA_FLOW_STARTER_SENSITIVITIES"),
   "FixM,FixVB,Sel4,IndexCvHalf"
+))
+flow_starter_selftest_tokens <- flow_split_csv(flow_env_any(
+  c("FLOW_SELFTESTS", "TUNA_FLOW_SELFTESTS", "FLOW_STARTER_SELFTESTS", "TUNA_FLOW_STARTER_SELFTESTS"),
+  "check,jitter,retro,hessian,likprof"
 ))
 
 # ---- Small editable starter tables ----------------------------------------------
@@ -146,7 +217,24 @@ flow_starter_sensitivity_tokens <- flow_split_csv(flow_env_any(
 # - CHANGE_TOKEN: what changed relative to the parent, e.g. FixM.
 # - CHANGE_SUMMARY: human-readable explanation for future you.
 
-flow_base_token_for <- function(index, base_dir) {
+flow_base_specs <- flow_read_table("base-models.csv", c("FLOW_BASE_MODELS_CSV", "TUNA_FLOW_BASE_MODELS_CSV"))
+if (nrow(flow_base_specs)) {
+  spec_dirs <- vapply(seq_len(nrow(flow_base_specs)), function(index) {
+    flow_first_col(flow_base_specs[index, , drop = FALSE], c("BASE_DIR", "INPUT_DIR", "input_dir", "base_dir"), "")
+  }, character(1))
+  spec_dirs <- spec_dirs[nzchar(spec_dirs)]
+  if (length(spec_dirs)) {
+    flow_base_input_dirs <- spec_dirs
+  }
+}
+
+flow_base_token_for <- function(index, base_dir, spec = NULL) {
+  if (!is.null(spec) && nrow(spec)) {
+    value <- flow_first_col(spec, c("MODEL_TOKEN", "TOKEN", "BASE_TOKEN", "token"), "")
+    if (nzchar(value)) {
+      return(value)
+    }
+  }
   if (length(flow_base_tokens) >= index && nzchar(flow_base_tokens[[index]])) {
     return(flow_base_tokens[[index]])
   }
@@ -156,7 +244,13 @@ flow_base_token_for <- function(index, base_dir) {
   paste0("Base", gsub("[^A-Za-z0-9]+", "", flow_title_case(basename(base_dir))))
 }
 
-flow_base_job_key_for <- function(index, token) {
+flow_base_job_key_for <- function(index, token, spec = NULL) {
+  if (!is.null(spec) && nrow(spec)) {
+    value <- flow_first_col(spec, c("JOB_KEY", "job_key"), "")
+    if (nzchar(value)) {
+      return(value)
+    }
+  }
   if (length(flow_base_job_keys) >= index && nzchar(flow_base_job_keys[[index]])) {
     return(flow_base_job_keys[[index]])
   }
@@ -168,18 +262,30 @@ flow_base_job_key_for <- function(index, token) {
 
 build_base_model_rows <- function(base_dirs = flow_base_input_dirs) {
   rows <- lapply(seq_along(base_dirs), function(index) {
+    spec <- if (nrow(flow_base_specs) >= index) flow_base_specs[index, , drop = FALSE] else data.frame()
     base_dir <- base_dirs[[index]]
-    input_variant <- basename(base_dir)
-    token <- flow_base_token_for(index, base_dir)
-    job_key <- flow_base_job_key_for(index, token)
+    input_variant <- flow_first_col(spec, c("INPUT_VARIANT", "VARIANT", "variant"), basename(base_dir))
+    token <- flow_base_token_for(index, base_dir, spec = spec)
+    job_key <- flow_base_job_key_for(index, token, spec = spec)
     model_name <- if (length(flow_base_names) >= index && nzchar(flow_base_names[[index]])) {
       flow_base_names[[index]]
+    } else if (nrow(spec)) {
+      flow_first_col(spec, c("MODEL_NAME", "NAME", "name"), paste(flow_assessment_label, token))
     } else {
-      paste(flow_assessment_label, input_variant, "base smoke")
+      paste(flow_assessment_label, token)
     }
-    model_dir <- file.path("model", job_key)
+    model_dir <- flow_first_col(spec, c("MODEL_DIR", "model_dir"), file.path("model", job_key))
+    backend <- flow_first_col(spec, c("MFCL_BACKEND", "BACKEND", "backend"), flow_model_backend)
+    make_targets <- flow_first_col(spec, c("MAKE_TARGETS", "make_targets"), flow_model_make_targets)
+    run_label <- flow_first_col(spec, c("RUN_LABEL", "run_label"), job_key)
+    title <- flow_first_col(spec, c("JOB_TITLE", "TITLE", "title"), paste("Base:", token))
+    description <- flow_first_col(
+      spec,
+      c("JOB_DESCRIPTION", "DESCRIPTION", "description"),
+      paste("Runs", input_variant, flow_species_label, "base model.")
+    )
     data.frame(
-      RUN_LABEL = job_key,
+      RUN_LABEL = run_label,
       JOB_KEY = job_key,
       MODEL_KEY = job_key,
       MODEL_TOKEN = token,
@@ -187,13 +293,13 @@ build_base_model_rows <- function(base_dirs = flow_base_input_dirs) {
       BASE_MODEL_KEY = "",
       CHANGE_TOKEN = token,
       CHANGE_GROUP = "base",
-      CHANGE_SUMMARY = paste("Runs", input_variant, flow_species_label, "MFCL input through a fast last-par smoke check."),
+      CHANGE_SUMMARY = description,
       INPUT_VARIANT = input_variant,
       SOURCE_REPO = flow_source_repo,
       SOURCE_REF = flow_source_ref,
       SOURCE_PATH = flow_source_path,
       USE_FLOW_SOURCE = "0",
-      MFCL_BACKEND = "mfcl_smoke",
+      MFCL_BACKEND = backend,
       PROGRAM_PATH = flow_default_program,
       PATCH_SCRIPT = "scripts/run-mfcl-input-recipe.R",
       PATCH_INPUT_DIR = base_dir,
@@ -205,9 +311,9 @@ build_base_model_rows <- function(base_dirs = flow_base_input_dirs) {
       RECIPE_TOKEN = token,
       RECIPE_FAMILY = "base",
       RECIPE_LABEL = "Base input",
-      JOB_TITLE = paste(flow_assessment_label, "base:", input_variant, "smoke"),
-      JOB_DESCRIPTION = paste("Normalizes the included", input_variant, flow_species_label, "input to MFCL .ini", flow_ini_version_target, "and runs a fast MFCL last-par smoke check."),
-      MAKE_TARGETS = "mfcl-smoke",
+      JOB_TITLE = title,
+      JOB_DESCRIPTION = description,
+      MAKE_TARGETS = make_targets,
       BASE_DIR = base_dir,
       MODEL_DIR = model_dir,
       COLLECT_PATHS = paste(c(model_dir, base_dir, if (!grepl("^/", flow_default_program)) flow_default_program else character()), collapse = ","),
@@ -257,24 +363,77 @@ mfcl_input_recipe_library <- data.frame(
   stringsAsFactors = FALSE
 )
 
+flow_merge_recipe_specs <- function(defaults, specs, token_col = "RECIPE_TOKEN") {
+  if (!is.data.frame(specs) || !nrow(specs)) {
+    return(defaults)
+  }
+  rows <- lapply(seq_len(nrow(specs)), function(index) {
+    spec <- specs[index, , drop = FALSE]
+    token <- flow_first_col(spec, c(token_col, "TOKEN", "token"), "")
+    base <- data.frame()
+    if (nzchar(token) && token_col %in% names(defaults)) {
+      hits <- defaults[tolower(as.character(defaults[[token_col]])) == tolower(token), , drop = FALSE]
+      if (nrow(hits)) {
+        base <- hits[1, , drop = FALSE]
+      }
+    }
+    if (!nrow(base)) {
+      base <- spec
+    } else {
+      for (name in names(spec)) {
+        value <- as.character(spec[[name]][[1]])
+        if (!is.na(value) && nzchar(value)) {
+          base[[name]] <- value
+        }
+      }
+    }
+    base
+  })
+  flow_bind_rows(rows)
+}
+
 base_models <- build_base_model_rows()
 
-starter_sensitivity_recipes <- mfcl_input_recipe_library[
-  mfcl_input_recipe_library$RECIPE_TOKEN %in% flow_starter_sensitivity_tokens,
-  ,
-  drop = FALSE
-]
+flow_sensitivity_specs <- flow_read_table("sensitivity-recipes.csv", c("FLOW_SENSITIVITY_RECIPES_CSV", "TUNA_FLOW_SENSITIVITY_RECIPES_CSV"))
+starter_sensitivity_recipes <- if (nrow(flow_sensitivity_specs)) {
+  flow_merge_recipe_specs(mfcl_input_recipe_library, flow_sensitivity_specs)
+} else {
+  mfcl_input_recipe_library[
+    mfcl_input_recipe_library$RECIPE_TOKEN %in% flow_starter_sensitivity_tokens,
+    ,
+    drop = FALSE
+  ]
+}
 
-starter_diagnostics_recipes <- data.frame(
-  RECIPE_TOKEN = "JitterSmoke",
-  RECIPE_KEY = "jitter",
-  RECIPE_FAMILY = "diagnostics",
-  RECIPE_LABEL = "Jitter smoke",
-  CHANGE_DETAIL = "Lightweight jitter-style diagnostics aggregation for fast dependency testing.",
-  MAKE_TARGETS = "diagnostics-smoke",
-  JITTER_SEED = 40,
+selftest_recipe_library <- data.frame(
+  RECIPE_TOKEN = c("check", "jitter", "retro", "hessian", "likprof"),
+  RECIPE_KEY = c("check", "jitter", "retro", "hessian", "likprof"),
+  RECIPE_FAMILY = "selftest",
+  RECIPE_LABEL = c("Check", "Jitter", "Retro", "Hessian", "Likprof"),
+  CHANGE_DETAIL = c(
+    "Checks that upstream model payloads, summaries, and key quantities are readable.",
+    "Runs a seeded jitter-style selftest summary from the parent model output.",
+    "Runs a retrospective-style selftest summary from the parent model output.",
+    "Records a Hessian selftest placeholder tied to the parent model output.",
+    "Records a likelihood-profile selftest placeholder tied to the parent model output."
+  ),
+  MAKE_TARGETS = "selftest",
+  SELFTEST_MODE = c("selftest", "jitter", "retro", "hessian", "likprof"),
+  SELFTEST_SEED = c(1000L, 2000L, 3000L, 4000L, 5000L),
+  RETRO_PEEL = c(NA, NA, 1L, NA, NA),
+  MFCL_BACKEND = "selftest",
   stringsAsFactors = FALSE
 )
+flow_selftest_specs <- flow_read_table("selftests.csv", c("FLOW_SELFTESTS_CSV", "TUNA_FLOW_SELFTESTS_CSV"))
+starter_diagnostics_recipes <- if (nrow(flow_selftest_specs)) {
+  flow_merge_recipe_specs(selftest_recipe_library, flow_selftest_specs)
+} else {
+  selftest_recipe_library[
+    selftest_recipe_library$RECIPE_TOKEN %in% flow_starter_selftest_tokens,
+    ,
+    drop = FALSE
+  ]
+}
 
 build_sensitivity_rows <- function(bases, recipes) {
   if (!nrow(bases) || !nrow(recipes)) {
@@ -293,12 +452,14 @@ build_sensitivity_rows <- function(bases, recipes) {
       base_dir <- file.path(dirname(base$BASE_DIR), input_variant)
       model_dir <- file.path("model", job_key)
       model_token <- if (nrow(bases) == 1L) recipe$RECIPE_TOKEN else paste(base$MODEL_TOKEN, recipe$RECIPE_TOKEN, sep = "_")
+      backend <- flow_first_col(recipe, c("MFCL_BACKEND", "BACKEND", "backend"), base$MFCL_BACKEND %||% flow_model_backend)
+      make_targets <- flow_first_col(recipe, c("MAKE_TARGETS", "make_targets"), flow_model_make_targets)
       row <- data.frame(
         RUN_LABEL = job_key,
         JOB_KEY = job_key,
         MODEL_KEY = job_key,
         MODEL_TOKEN = model_token,
-        MODEL_NAME = paste(flow_assessment_label, base$MODEL_TOKEN, recipe$RECIPE_LABEL, "sensitivity smoke"),
+        MODEL_NAME = paste(base$MODEL_TOKEN, recipe$RECIPE_LABEL),
         MODEL_LABEL = paste(base$MODEL_TOKEN, recipe$RECIPE_TOKEN, sep = " | "),
         PLOT_LABEL = recipe$RECIPE_TOKEN,
         REPORT_LABEL = paste(recipe$RECIPE_TOKEN, "-", recipe$RECIPE_LABEL),
@@ -311,7 +472,7 @@ build_sensitivity_rows <- function(bases, recipes) {
         CHANGE_TOKEN = recipe$RECIPE_TOKEN,
         CHANGE_GROUP = recipe$RECIPE_FAMILY,
         CHANGE_DETAIL = recipe$CHANGE_DETAIL,
-        CHANGE_SUMMARY = paste(recipe$CHANGE_DETAIL, "Runs a fast last-par smoke check."),
+        CHANGE_SUMMARY = recipe$CHANGE_DETAIL,
         INPUT_VARIANT = input_variant,
         INPUT_TASK = flow_task_codes[["base"]],
         INPUT_KEY = base$JOB_KEY,
@@ -319,16 +480,16 @@ build_sensitivity_rows <- function(bases, recipes) {
         SOURCE_REF = base$SOURCE_REF %||% flow_source_ref,
         SOURCE_PATH = base$SOURCE_PATH %||% "",
         USE_FLOW_SOURCE = base$USE_FLOW_SOURCE %||% "0",
-        MFCL_BACKEND = base$MFCL_BACKEND %||% "mfcl_smoke",
+        MFCL_BACKEND = backend,
         PROGRAM_PATH = base$PROGRAM_PATH %||% flow_default_program,
-        MAKE_TARGETS = "mfcl-smoke",
+        MAKE_TARGETS = make_targets,
         BASE_DIR = base_dir,
         MODEL_DIR = model_dir,
         PATCH_SCRIPT = recipe$PATCH_SCRIPT,
         PATCH_INPUT_DIR = base$BASE_DIR,
         PATCH_OUTPUT_DIR = base_dir,
         JOB_TITLE = paste("Sensitivity:", recipe$RECIPE_TOKEN),
-        JOB_DESCRIPTION = paste("Builds", recipe$RECIPE_LABEL, "from", base$MODEL_TOKEN, "input settings and runs a fast MFCL last-par smoke check."),
+        JOB_DESCRIPTION = paste("Runs", recipe$RECIPE_TOKEN, "from", base$MODEL_TOKEN, "."),
         COLLECT_PATHS = paste(model_dir, base_dir, sep = ","),
         stringsAsFactors = FALSE
       )
@@ -352,8 +513,11 @@ build_diagnostics_rows <- function(parent_rows, recipes, input_task) {
     parent_input_task <- if (length(input_task) > 1L) input_task[[parent_index]] else input_task
     for (recipe_index in seq_len(nrow(recipes))) {
       recipe <- recipes[recipe_index, , drop = FALSE]
-      seed <- suppressWarnings(as.integer(recipe$JITTER_SEED)) + parent_index - 1L
-      job_key <- paste("diag", parent$MODEL_TOKEN, recipe$RECIPE_KEY, sep = "-")
+      seed_base <- suppressWarnings(as.integer(flow_first_col(recipe, c("SELFTEST_SEED", "JITTER_SEED"), "1000")))
+      if (!is.finite(seed_base)) seed_base <- 1000L
+      seed <- seed_base + parent_index - 1L
+      selftest_mode <- flow_first_col(recipe, c("SELFTEST_MODE", "MODE", "mode"), recipe$RECIPE_KEY)
+      job_key <- paste("selftest", parent$MODEL_TOKEN, recipe$RECIPE_KEY, sep = "-")
       job_key <- gsub("[^A-Za-z0-9_-]+", "-", job_key)
       model_token <- paste(parent$MODEL_TOKEN, recipe$RECIPE_TOKEN, sep = "_")
       rows[[length(rows) + 1L]] <- data.frame(
@@ -361,7 +525,7 @@ build_diagnostics_rows <- function(parent_rows, recipes, input_task) {
         JOB_KEY = job_key,
         MODEL_KEY = job_key,
         MODEL_TOKEN = model_token,
-        MODEL_NAME = paste(flow_assessment_label, parent$MODEL_TOKEN, recipe$RECIPE_LABEL, "diagnostics smoke"),
+        MODEL_NAME = paste(parent$MODEL_TOKEN, recipe$RECIPE_LABEL),
         MODEL_LABEL = paste(parent$MODEL_TOKEN, recipe$RECIPE_TOKEN, sep = " | "),
         PLOT_LABEL = paste(parent$MODEL_TOKEN, recipe$RECIPE_TOKEN, sep = " + "),
         REPORT_LABEL = paste(parent$MODEL_TOKEN, recipe$RECIPE_LABEL, sep = " - "),
@@ -372,9 +536,9 @@ build_diagnostics_rows <- function(parent_rows, recipes, input_task) {
         RECIPE_FAMILY = recipe$RECIPE_FAMILY,
         RECIPE_LABEL = recipe$RECIPE_LABEL,
         CHANGE_TOKEN = recipe$RECIPE_TOKEN,
-        CHANGE_GROUP = recipe$RECIPE_FAMILY,
+        CHANGE_GROUP = "selftest",
         CHANGE_DETAIL = recipe$CHANGE_DETAIL,
-        CHANGE_SUMMARY = paste(recipe$CHANGE_DETAIL, "Input:", parent$MODEL_TOKEN),
+        CHANGE_SUMMARY = paste(recipe$CHANGE_DETAIL, "Parent:", parent$MODEL_TOKEN),
         INPUT_VARIANT = parent$INPUT_VARIANT %||% "",
         INPUT_TASK = parent_input_task,
         INPUT_KEY = parent$JOB_KEY,
@@ -382,18 +546,22 @@ build_diagnostics_rows <- function(parent_rows, recipes, input_task) {
         SOURCE_REF = parent$SOURCE_REF %||% flow_source_ref,
         SOURCE_PATH = parent$SOURCE_PATH %||% "",
         USE_FLOW_SOURCE = parent$USE_FLOW_SOURCE %||% "0",
-        MFCL_BACKEND = "diagnostics_smoke",
+        MFCL_BACKEND = flow_first_col(recipe, c("MFCL_BACKEND", "BACKEND"), "selftest"),
         PROGRAM_PATH = parent$PROGRAM_PATH %||% flow_default_program,
         MAKE_TARGETS = recipe$MAKE_TARGETS,
         BASE_DIR = parent$BASE_DIR %||% "",
         MODEL_DIR = file.path("model", job_key),
+        SELFTEST_MODE = selftest_mode,
+        SELFTEST_SEED = seed,
         JITTER_SEED = seed,
-        JITTER_SMOKE_ONLY = "1",
+        RETRO_PEEL = flow_first_col(recipe, c("RETRO_PEEL", "PEEL"), ""),
+        LIKPROF_TARGET = flow_first_col(recipe, c("LIKPROF_TARGET", "PROFILE_TARGET"), ""),
+        JITTER_SMOKE_ONLY = "0",
         PATCH_SCRIPT = "",
         PATCH_INPUT_DIR = "",
         PATCH_OUTPUT_DIR = "",
-        JOB_TITLE = paste("Diagnostics:", parent$MODEL_TOKEN, recipe$RECIPE_TOKEN),
-        JOB_DESCRIPTION = paste("Creates a short diagnostics summary from", parent$MODEL_TOKEN, "using", recipe$RECIPE_LABEL, "."),
+        JOB_TITLE = paste("Selftest:", parent$MODEL_TOKEN, recipe$RECIPE_TOKEN),
+        JOB_DESCRIPTION = paste(recipe$RECIPE_LABEL, "check for", parent$MODEL_TOKEN, "seed", seed),
         COLLECT_PATHS = file.path("model", job_key),
         stringsAsFactors = FALSE
       )
@@ -404,48 +572,54 @@ build_diagnostics_rows <- function(parent_rows, recipes, input_task) {
 
 sensitivity_models <- build_sensitivity_rows(base_models, starter_sensitivity_recipes)
 
-diagnostics_runs <- rbind(
+diagnostics_runs <- flow_bind_rows(
   build_diagnostics_rows(base_models, starter_diagnostics_recipes, flow_task_codes[["base"]]),
   build_diagnostics_rows(sensitivity_models, starter_diagnostics_recipes, flow_task_codes[["sensitivity"]])
 )
 
+flow_plot_job_key <- flow_env_any(c("FLOW_PLOT_JOB_KEY", "TUNA_FLOW_PLOT_JOB_KEY"), if (isTRUE(flow_is_full_run)) "plot-report-figures" else "plot-key-quantities-smoke")
+flow_report_job_key <- flow_env_any(c("FLOW_REPORT_JOB_KEY", "TUNA_FLOW_REPORT_JOB_KEY"), if (isTRUE(flow_is_full_run)) "report-assessment" else "report-key-quantities-smoke")
+flow_plot_title <- flow_env_any(c("FLOW_PLOT_TITLE", "TUNA_FLOW_PLOT_TITLE"), paste(flow_assessment_label, "report figures"))
+flow_report_render_format <- flow_env_any(c("FLOW_REPORT_RENDER_FORMAT", "TUNA_FLOW_REPORT_RENDER_FORMAT"), "pdf")
+
 plot_runs <- data.frame(
-  RUN_LABEL = "plot-key-quantities-smoke",
-  JOB_KEY = "plot-key-quantities-smoke",
-  MODEL_KEY = "plot-key-quantities-smoke",
-  MODEL_TOKEN = "PlotKeyQuantitiesSmoke",
-  MODEL_NAME = paste(flow_assessment_label, "key quantities smoke plot package"),
+  RUN_LABEL = flow_plot_job_key,
+  JOB_KEY = flow_plot_job_key,
+  MODEL_KEY = flow_plot_job_key,
+  MODEL_TOKEN = "Plot",
+  MODEL_NAME = paste(flow_assessment_label, "report figures"),
   BASE_MODEL_KEY = flow_base_job_key,
   CHANGE_TOKEN = "Plot",
   CHANGE_GROUP = "plot",
-  CHANGE_SUMMARY = "Collects selected smoke outputs into a key derived quantities plot package.",
-  JOB_TITLE = "Plot: key quantities smoke",
-  JOB_DESCRIPTION = "Creates key derived quantity plots from selected model and diagnostics outputs.",
+  CHANGE_SUMMARY = "Builds the mfclshiny report-ready figure bundle from selected model and selftest outputs.",
+  JOB_TITLE = "Plot: report figures",
+  JOB_DESCRIPTION = "Builds mfclshiny report figures, tables, and HTML review.",
   INPUT_TASK = flow_task_codes[["diagnostics"]],
   INPUT_KEY = paste(diagnostics_runs$JOB_KEY, collapse = ","),
-  PLOT_TITLE = paste(flow_assessment_label, "key quantities smoke check"),
+  PLOT_TITLE = flow_plot_title,
   PLOT_BACKEND = "mfclshiny",
   MFCLSHINY_SCRIPT = "hooks/depletion_smoke.R",
-  MODEL_LABEL = "Key quantities smoke",
-  PLOT_LABEL = "Key quantities",
-  REPORT_LABEL = "Key derived quantity plots",
+  REPORT_FIGURE_BASENAME = "key-quantities",
+  MODEL_LABEL = "Report figures",
+  PLOT_LABEL = "Report figures",
+  REPORT_LABEL = "Report figures",
   stringsAsFactors = FALSE
 )
 
 report_runs <- data.frame(
-  RUN_LABEL = "report-key-quantities-smoke",
-  JOB_KEY = "report-key-quantities-smoke",
-  MODEL_KEY = "report-key-quantities-smoke",
-  MODEL_TOKEN = "ReportKeyQuantitiesSmoke",
-  MODEL_NAME = paste(flow_assessment_label, "key quantities Quarto report"),
+  RUN_LABEL = flow_report_job_key,
+  JOB_KEY = flow_report_job_key,
+  MODEL_KEY = flow_report_job_key,
+  MODEL_TOKEN = "Report",
+  MODEL_NAME = paste(flow_assessment_label, "assessment report"),
   BASE_MODEL_KEY = flow_base_job_key,
   CHANGE_TOKEN = "Report",
   CHANGE_GROUP = "report",
-  CHANGE_SUMMARY = "Renders selected key quantity figures into a Quarto PDF report.",
-  JOB_TITLE = paste("Report:", flow_species, "key quantities smoke"),
-  JOB_DESCRIPTION = "Renders a Quarto report from the selected key quantity figure package.",
+  CHANGE_SUMMARY = "Renders the assessment report from the selected report-ready figure bundle.",
+  JOB_TITLE = "Report: assessment",
+  JOB_DESCRIPTION = "Renders the Quarto assessment report from Kflow outputs.",
   INPUT_TASK = flow_task_codes[["plot"]],
-  INPUT_KEY = "plot-key-quantities-smoke",
+  INPUT_KEY = flow_plot_job_key,
   REPORT_TITLE = flow_report_file_stem,
   REPORT_FILE_STEM = flow_report_file_stem,
   REPORT_SOURCE_REPO = flow_report_repo,
@@ -453,14 +627,16 @@ report_runs <- data.frame(
   REPORT_SOURCE_PATH = flow_report_path,
   REPORT_TEMPLATE_MAIN = flow_report_main,
   REPORT_FIGURE_DIR = "Figures/generated",
-  REPORT_RENDER_FORMAT = "pdf",
+  REPORT_RENDER_FORMAT = flow_report_render_format,
   REPORT_REQUIRE_PLOTS = "true",
   REPORT_REWRITE_FIGURES = "false",
   REPORT_REWRITE_TABLES = "false",
+  REPORT_COPY_FIGURE_TREE = "true",
+  REPORT_INCLUDE_GENERATED_TABLES = "true",
   KFLOW_RUNTIME_PACKAGES = "none",
-  MODEL_LABEL = "Key quantities smoke report",
+  MODEL_LABEL = "Assessment report",
   PLOT_LABEL = "Report",
-  REPORT_LABEL = "Key quantities smoke report",
+  REPORT_LABEL = "Assessment report",
   stringsAsFactors = FALSE
 )
 
@@ -482,7 +658,7 @@ runtime_package_specs <- function(backend, stage = "", plot_backend = "", mfclsh
   if (identical(stage, "plot") || identical(plot_backend, "mfclshiny") || nzchar(mfclshiny_script)) {
     return(specs[["mfclshiny"]])
   }
-  if (identical(stage, "diagnostics") || identical(backend, "diagnostics_smoke")) {
+  if (identical(stage, "diagnostics") || identical(backend, "diagnostics_smoke") || identical(backend, "selftest")) {
     return("none")
   }
   if (identical(backend, "mfclrtmb")) {
@@ -490,6 +666,9 @@ runtime_package_specs <- function(backend, stage = "", plot_backend = "", mfclsh
   }
   if (identical(backend, "mfcl_smoke")) {
     return(specs[["mfclkit"]])
+  }
+  if (identical(backend, "mfcl_full")) {
+    return(paste(c(specs[["mfclkit"]], specs[["mfclshiny"]]), collapse = ","))
   }
   if (identical(backend, "mfcl_exe")) {
     return(specs[["mfclkit"]])
@@ -529,15 +708,25 @@ common_env <- function(rows) {
   rows$SMOKE_INPUT_PAR <- if ("SMOKE_INPUT_PAR" %in% names(rows)) rows$SMOKE_INPUT_PAR else "last"
   rows$SMOKE_OUTPUT_PAR <- if ("SMOKE_OUTPUT_PAR" %in% names(rows)) rows$SMOKE_OUTPUT_PAR else ""
   rows$SMOKE_FEVALS <- if ("SMOKE_FEVALS" %in% names(rows)) rows$SMOKE_FEVALS else "1"
+  rows$MFCL_FULL_SCRIPT <- if ("MFCL_FULL_SCRIPT" %in% names(rows)) rows$MFCL_FULL_SCRIPT else "doitall.sh"
+  rows$MFCL_FULL_LIVE_LOG_STREAM <- if ("MFCL_FULL_LIVE_LOG_STREAM" %in% names(rows)) {
+    rows$MFCL_FULL_LIVE_LOG_STREAM
+  } else {
+    ifelse(tolower(rows$MFCL_BACKEND) == "mfcl_full", "stderr", "none")
+  }
+  rows$SELFTEST_MODE <- if ("SELFTEST_MODE" %in% names(rows)) rows$SELFTEST_MODE else ""
+  rows$SELFTEST_SEED <- if ("SELFTEST_SEED" %in% names(rows)) rows$SELFTEST_SEED else ""
+  rows$RETRO_PEEL <- if ("RETRO_PEEL" %in% names(rows)) rows$RETRO_PEEL else ""
+  rows$LIKPROF_TARGET <- if ("LIKPROF_TARGET" %in% names(rows)) rows$LIKPROF_TARGET else ""
   rows$MFCL_REQUIRE_DERIVED <- if ("MFCL_REQUIRE_DERIVED" %in% names(rows)) {
     rows$MFCL_REQUIRE_DERIVED
   } else {
-    ifelse(tolower(rows$MFCL_BACKEND) == "mfcl_smoke", "true", "false")
+    ifelse(tolower(rows$MFCL_BACKEND) %in% c("mfcl_smoke", "mfcl_full"), "true", "false")
   }
   rows$MFCL_REQUIRE_KEY_QUANTITIES <- if ("MFCL_REQUIRE_KEY_QUANTITIES" %in% names(rows)) {
     rows$MFCL_REQUIRE_KEY_QUANTITIES
   } else {
-    ifelse(tolower(rows$MFCL_BACKEND) == "mfcl_smoke", "true", "false")
+    ifelse(tolower(rows$MFCL_BACKEND) %in% c("mfcl_smoke", "mfcl_full"), "true", "false")
   }
   rows$MFCL_SMOKE_LIVE_LOG_STREAM <- if ("MFCL_SMOKE_LIVE_LOG_STREAM" %in% names(rows)) {
     rows$MFCL_SMOKE_LIVE_LOG_STREAM
@@ -803,8 +992,10 @@ launch_sensitivity <- function(rows = sensitivity_models, ...) {
 }
 
 launch_diagnostics <- function(rows = diagnostics_runs, ...) {
-  launch_rows(flow_task_codes[["diagnostics"]], "diagnostics", rows, tags = list(stage = "diagnostics"), ...)
+  launch_rows(flow_task_codes[["diagnostics"]], "diagnostics", rows, tags = list(stage = "selftest"), ...)
 }
+
+launch_selftest <- launch_diagnostics
 
 launch_plot <- function(rows = plot_runs, ...) {
   launch_rows(flow_task_codes[["plot"]], "plot", rows, tags = list(stage = "plot"), ...)
@@ -915,12 +1106,13 @@ launch_example_flow <- function(...) {
 }
 
 launch_stage <- function(stage, rows, batch_size = Inf, limit = Inf, ...) {
-  stage <- match.arg(stage, c("base", "sensitivity", "diagnostics", "plot", "report"))
+  stage <- match.arg(stage, c("base", "sensitivity", "diagnostics", "selftest", "plot", "report"))
   switch(
     stage,
     base = launch_rows_batched(flow_task_codes[["base"]], "base", rows, batch_size = batch_size, limit = limit, tags = list(stage = "base"), ...),
     sensitivity = launch_rows_batched(flow_task_codes[["sensitivity"]], "sensitivity", rows, batch_size = batch_size, limit = limit, tags = list(stage = "sensitivity"), ...),
-    diagnostics = launch_rows_batched(flow_task_codes[["diagnostics"]], "diagnostics", rows, batch_size = batch_size, limit = limit, tags = list(stage = "diagnostics"), ...),
+    diagnostics = launch_rows_batched(flow_task_codes[["diagnostics"]], "diagnostics", rows, batch_size = batch_size, limit = limit, tags = list(stage = "selftest"), ...),
+    selftest = launch_rows_batched(flow_task_codes[["diagnostics"]], "diagnostics", rows, batch_size = batch_size, limit = limit, tags = list(stage = "selftest"), ...),
     plot = launch_rows_batched(flow_task_codes[["plot"]], "plot", rows, batch_size = batch_size, limit = limit, tags = list(stage = "plot"), ...),
     report = launch_rows_batched(flow_task_codes[["report"]], "report", rows, batch_size = batch_size, limit = limit, tags = list(stage = "report"), ...)
   )

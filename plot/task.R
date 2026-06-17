@@ -60,7 +60,11 @@ mfclshiny_status <- if (file.exists(mfclshiny_status_file)) {
 } else {
   ""
 }
-report_figure <- if (file.exists(file.path(ctx$out_dir, "report-figures", "key-quantities-smoke.png"))) {
+report_figure <- if (file.exists(file.path(ctx$out_dir, "report-figures", "key-quantities.png"))) {
+  "report-figures/key-quantities.png"
+} else if (file.exists(file.path(ctx$out_dir, "key-quantities.png"))) {
+  "key-quantities.png"
+} else if (file.exists(file.path(ctx$out_dir, "report-figures", "key-quantities-smoke.png"))) {
   "report-figures/key-quantities-smoke.png"
 } else if (file.exists(file.path(ctx$out_dir, "key-quantities-smoke.png"))) {
   "key-quantities-smoke.png"
@@ -82,15 +86,19 @@ report_artifacts <- if (dir.exists(report_figure_dir)) {
 }
 report_figures <- report_artifacts[grepl("[.]png$", report_artifacts, ignore.case = TRUE)]
 figure_priority <- function(path) {
-  if (grepl("key-quantities-smoke[.]png$", path, ignore.case = TRUE)) return(1L)
-  if (grepl("depletion-smoke[.]png$", path, ignore.case = TRUE)) return(2L)
+  if (grepl("key-quantities[.]png$", path, ignore.case = TRUE)) return(1L)
+  if (grepl("key-quantities-smoke[.]png$", path, ignore.case = TRUE)) return(2L)
+  if (grepl("depletion[.]png$", path, ignore.case = TRUE)) return(3L)
+  if (grepl("depletion-smoke[.]png$", path, ignore.case = TRUE)) return(4L)
   20L
 }
 report_figures <- report_figures[order(vapply(report_figures, figure_priority, integer(1)), report_figures)]
 if (length(report_figures)) {
   report_figure <- report_figures[[1L]]
 }
-plot_file <- if (file.exists(file.path(ctx$out_dir, "key-quantities-smoke.svg"))) {
+plot_file <- if (file.exists(file.path(ctx$out_dir, "key-quantities.svg"))) {
+  "key-quantities.svg"
+} else if (file.exists(file.path(ctx$out_dir, "key-quantities-smoke.svg"))) {
   "key-quantities-smoke.svg"
 } else if (file.exists(file.path(ctx$out_dir, "model-exploration-overview.svg"))) {
   "model-exploration-overview.svg"
