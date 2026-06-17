@@ -66,14 +66,22 @@ flow_title_case <- function(x) {
   paste(paste0(toupper(substr(words, 1, 1)), substr(words, 2, nchar(words))), collapse = " ")
 }
 
-flow_species <- toupper(flow_env_any(c("FLOW_SPECIES", "TUNA_FLOW_SPECIES"), "BET"))
-flow_assessment_year <- flow_env_any(c("FLOW_ASSESSMENT_YEAR", "TUNA_FLOW_ASSESSMENT_YEAR"), "2026")
+flow_species <- toupper(flow_env_any(c("FLOW_SPECIES", "TUNA_FLOW_SPECIES"), "TUNA"))
+flow_assessment_year <- flow_env_any(c("FLOW_ASSESSMENT_YEAR", "TUNA_FLOW_ASSESSMENT_YEAR"), "YYYY")
 flow_species_label <- flow_env_any(
   c("FLOW_SPECIES_LABEL", "TUNA_FLOW_SPECIES_LABEL"),
   switch(flow_species, BET = "Bigeye tuna", YFT = "Yellowfin tuna", SKJ = "Skipjack tuna", ALB = "Albacore tuna", flow_title_case(flow_species))
 )
 flow_assessment_label <- trimws(paste(flow_species, flow_assessment_year))
 flow_species_slug <- tolower(gsub("[^A-Za-z0-9]+", "-", flow_species))
+flow_assessment_slug <- flow_env_any(
+  c("FLOW_ASSESSMENT_SLUG", "TUNA_FLOW_ASSESSMENT_SLUG"),
+  paste0(flow_species_slug, flow_assessment_year)
+)
+flow_report_folder <- flow_env_any(
+  c("FLOW_REPORT_FOLDER", "TUNA_FLOW_REPORT_FOLDER"),
+  paste(flow_species_slug, flow_assessment_year, "report", sep = "-")
+)
 flow_task_prefix <- flow_env_any(
   c("FLOW_TASK_PREFIX", "TUNA_FLOW_TASK_PREFIX"),
   paste(flow_species_slug, flow_assessment_year, sep = "-")
@@ -82,12 +90,18 @@ flow_project_tag <- flow_env_any(c("FLOW_PROJECT_TAG", "TUNA_FLOW_PROJECT_TAG"),
 flow_flow_group <- paste(flow_project_tag, flow_species_slug, format(Sys.time(), "%Y%m%d-%H%M%S"), sep = "-")
 flow_kflow_repo <- flow_env_any(c("FLOW_KFLOW_REPO", "TUNA_FLOW_REPO"), "PacificCommunity/ofp-sam-tuna-flow")
 flow_kflow_branch <- flow_env_any(c("FLOW_KFLOW_BRANCH", "TUNA_FLOW_BRANCH"), "main")
-flow_source_repo <- flow_env_any(c("FLOW_SOURCE_REPO", "TUNA_FLOW_SOURCE_REPO"), "PacificCommunity/ofp-sam-bet2026-inputs")
+flow_source_repo <- flow_env_any(
+  c("FLOW_SOURCE_REPO", "TUNA_FLOW_SOURCE_REPO"),
+  paste0("PacificCommunity/ofp-sam-", flow_assessment_slug, "-inputs")
+)
 flow_source_ref <- flow_env_any(c("FLOW_SOURCE_REF", "TUNA_FLOW_SOURCE_REF"), "main")
 flow_source_path <- flow_env_any(c("FLOW_SOURCE_PATH", "TUNA_FLOW_SOURCE_PATH", "SOURCE_PATH"), "")
-flow_report_repo <- flow_env_any(c("FLOW_REPORT_REPO", "TUNA_FLOW_REPORT_REPO"), "PacificCommunity/ofp-sam-bet2026-report")
+flow_report_repo <- flow_env_any(
+  c("FLOW_REPORT_REPO", "TUNA_FLOW_REPORT_REPO"),
+  paste0("PacificCommunity/ofp-sam-", flow_assessment_slug, "-report")
+)
 flow_report_ref <- flow_env_any(c("FLOW_REPORT_REF", "TUNA_FLOW_REPORT_REF"), "main")
-flow_report_path <- flow_env_any(c("FLOW_REPORT_PATH", "TUNA_FLOW_REPORT_PATH"), "bet-2026-report")
+flow_report_path <- flow_env_any(c("FLOW_REPORT_PATH", "TUNA_FLOW_REPORT_PATH"), flow_report_folder)
 flow_report_main <- flow_env_any(c("FLOW_REPORT_MAIN", "TUNA_FLOW_REPORT_MAIN"), "assessment-report.qmd")
 flow_docker_image <- flow_env_any(
   c("FLOW_DOCKER_IMAGE", "TUNA_FLOW_DOCKER_IMAGE"),
@@ -101,14 +115,14 @@ flow_task_codes[["report"]] <- flow_env_any(
   paste(flow_task_prefix, "report", sep = "-")
 )
 flow_default_program <- flow_env_any(c("FLOW_MFCL_PROGRAM", "TUNA_FLOW_MFCL_PROGRAM"), "/home/mfcl/mfclo64")
-flow_default_input_dir <- flow_env_any(c("FLOW_BASE_INPUT_DIR", "TUNA_FLOW_BASE_INPUT_DIR"), "mfcl/inputs/2023_4region_1007")
+flow_default_input_dir <- flow_env_any(c("FLOW_BASE_INPUT_DIR", "TUNA_FLOW_BASE_INPUT_DIR"), "mfcl/inputs/base")
 flow_base_input_dirs <- flow_split_csv(flow_env_any(c("FLOW_BASE_INPUT_DIRS", "TUNA_FLOW_BASE_INPUT_DIRS"), flow_default_input_dir))
 if (!length(flow_base_input_dirs)) {
   flow_base_input_dirs <- flow_default_input_dir
 }
 flow_default_input_variant <- flow_env_any(c("FLOW_BASE_INPUT_VARIANT", "TUNA_FLOW_BASE_INPUT_VARIANT"), basename(flow_base_input_dirs[[1]]))
-flow_base_job_key <- flow_env_any(c("FLOW_BASE_JOB_KEY", "TUNA_FLOW_BASE_JOB_KEY"), "base-4r-smoke")
-flow_base_token <- flow_env_any(c("FLOW_BASE_TOKEN", "TUNA_FLOW_BASE_TOKEN"), "Base4R")
+flow_base_job_key <- flow_env_any(c("FLOW_BASE_JOB_KEY", "TUNA_FLOW_BASE_JOB_KEY"), "base-smoke")
+flow_base_token <- flow_env_any(c("FLOW_BASE_TOKEN", "TUNA_FLOW_BASE_TOKEN"), "Base")
 flow_report_file_stem <- flow_env_any(c("FLOW_REPORT_FILE_STEM", "TUNA_FLOW_REPORT_FILE_STEM"), paste(flow_task_prefix, "report", sep = "-"))
 flow_ini_version_target <- flow_env_any(c("FLOW_MFCL_INI_VERSION_TARGET", "MFCL_INI_VERSION_TARGET"), "1007")
 flow_base_tokens <- flow_split_csv(flow_env_any(c("FLOW_BASE_TOKENS", "TUNA_FLOW_BASE_TOKENS"), ""))
@@ -667,7 +681,7 @@ base_model <- function(job_key,
 sensitivity_model <- function(job_key,
                               token,
                               name,
-                              base_key = "base-4r-smoke",
+                              base_key = flow_base_job_key,
                               make_targets,
                               base_dir,
                               model_dir,

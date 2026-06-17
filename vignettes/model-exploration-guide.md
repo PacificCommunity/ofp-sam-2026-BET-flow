@@ -40,16 +40,22 @@ Sys.setenv(
   FLOW_SOURCE_REPO = "PacificCommunity/ofp-sam-bet2026-inputs",
   FLOW_SOURCE_REF = "main",
   FLOW_BASE_INPUT_DIR = "mfcl/inputs/2023_4region_1007",
+  FLOW_REPORT_REPO = "PacificCommunity/ofp-sam-bet2026-report",
+  FLOW_REPORT_REF = "main",
+  FLOW_REPORT_PATH = "bet-2026-report",
+  FLOW_REPORT_MAIN = "assessment-report.qmd",
   FLOW_MFCL_PROGRAM = "/home/mfcl/mfclo64"
 )
 
 source("R/workflow.R")
 ```
 
-With that preset, task codes are generated as `bet-2026-base`,
+The same settings are available in `configs/bet-2026.env` for scripts or shell
+sessions that prefer an env file. With that preset, task codes are generated as
+`bet-2026-base`,
 `bet-2026-sensitivity`, `bet-2026-diagnostics`, `bet-2026-plot`, and
 `bet-2026-report`. For YFT, set `FLOW_SPECIES = "YFT"` and choose the YFT input
-directory; the same tables and dependencies still work.
+directory and report repository; the same tables and dependencies still work.
 
 For local dry runs before the input bundle is pushed, set `SOURCE_PATH` or
 `FLOW_SOURCE_PATH` to a local input-bundle checkout. Do not put a local path into
@@ -73,7 +79,8 @@ For many models, add rows to recipe tables rather than copying long Kflow rows.
 
 ## Input bundle layout
 
-An input bundle is a regular GitHub repository with a small, predictable layout:
+An input bundle is a regular GitHub repository selected by `FLOW_SOURCE_REPO`
+and `FLOW_SOURCE_REF`, with a small, predictable layout:
 
 ```text
 mfcl/
@@ -196,15 +203,14 @@ The plot job writes:
 
 The report job writes:
 
-- `bet-2026-report.pdf` or `.html`, depending on `REPORT_RENDER_FORMAT`
+- `${REPORT_FILE_STEM}.pdf` or `.html`, depending on `REPORT_RENDER_FORMAT`
 - `report-summary.csv`
 - `model-registry.csv`
 
-The report job is registered separately as `bet-2026-report`. It clones
-`PacificCommunity/ofp-sam-bet2026-report`, renders `assessment-report.qmd`,
-copies upstream report-ready figures into
-the report, and renders only the compact report outputs. That lets you rerun
-only the report stage from an existing plot job:
+The report job clones `REPORT_SOURCE_REPO`, enters `REPORT_SOURCE_PATH` when it
+is set, renders `REPORT_TEMPLATE_MAIN` or `REPORT_MAIN`, copies upstream
+report-ready figures into the report, and keeps only compact report outputs.
+That lets you rerun only the report stage from an existing plot job:
 
 ```r
 launch_report(report_from(flow_task_codes[["plot"]], "plot-depletion-smoke", "report-rerun"))

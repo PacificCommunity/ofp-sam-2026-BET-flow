@@ -1,5 +1,5 @@
 ---
-title: "2026 BET Assessment"
+title: "Tuna Assessment Report"
 date: last-modified
 date-format: "DD MMMM YYYY"
 author:
@@ -8,10 +8,10 @@ author:
       - id: spc
         name: "Oceanic Fisheries Programme of the Pacific Community"
 meetingtype: "SCIENTIFIC COMMITTEE"
-meetingnumber: "TWENTY-SECOND REGULAR SESSION"
-meetinglocation: "Samoa"
-meetingdates: "xx-xx August 2026"
-repnumber: WCPFC-SC22-2026/SA-WP-xx
+meetingnumber: "TODO"
+meetinglocation: "TODO"
+meetingdates: "TODO"
+repnumber: TODO
 header-includes: |
 #    \usepackage{draftwatermark}
 format:

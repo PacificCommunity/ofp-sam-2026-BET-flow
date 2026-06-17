@@ -63,7 +63,8 @@
 \newcommand{\sss}{Stock Synthesis\xspace}
 \newcommand{\spalb}{south Pacific albacore tuna\xspace}
 \newcommand{\alb}{albacore tuna\xspace}
-\newcommand{\bet}{bigeye tuna\xspace}
+\newcommand{\tuna}{tuna\xspace}
+\newcommand{\stock}{selected tuna stock\xspace}
 \newcommand{\swpo}{Southwest Pacific Ocean\xspace}
 \newcommand{\mls}{striped marlin\xspace}
 

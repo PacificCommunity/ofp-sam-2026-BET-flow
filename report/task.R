@@ -108,7 +108,12 @@ report_source_path <- kflow_env("REPORT_SOURCE_PATH", "")
 template_dir_setting <- kflow_env("REPORT_TEMPLATE_DIR", "templates/tuna-assessment")
 template_main <- kflow_env("REPORT_TEMPLATE_MAIN", kflow_env("REPORT_MAIN", if (nzchar(report_source_repo)) "assessment-report.qmd" else "assessment.qmd"))
 title <- kflow_env("REPORT_TITLE", if (nzchar(report_source_repo)) "" else "Tuna assessment report")
-report_file_stem <- kflow_env("REPORT_FILE_STEM", if (nzchar(report_source_repo)) "bet-2026-report" else "tuna-flow-report")
+report_file_stem_default <- {
+  species <- tolower(gsub("[^A-Za-z0-9]+", "-", kflow_env("FLOW_SPECIES", "tuna")))
+  year <- gsub("[^A-Za-z0-9]+", "-", kflow_env("FLOW_ASSESSMENT_YEAR", ""))
+  if (nzchar(year)) paste(species, year, "report", sep = "-") else "tuna-flow-report"
+}
+report_file_stem <- kflow_env("REPORT_FILE_STEM", report_file_stem_default)
 effective_render_format <- render_format
 report_ext <- if (identical(effective_render_format, "pdf")) "pdf" else "html"
 report_file <- paste0(report_file_stem, ".", report_ext)

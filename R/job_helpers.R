@@ -194,8 +194,27 @@ kflow_clone_github_repo <- function(repo, ref = "main", work_dir = "work/source"
   normalizePath(work_dir, winslash = "/", mustWork = TRUE)
 }
 
+kflow_slug_value <- function(value, default = "") {
+  value <- tolower(gsub("[^A-Za-z0-9]+", "-", as.character(value %||% default)))
+  gsub("^-+|-+$", "", value)
+}
+
+kflow_assessment_slug <- function() {
+  explicit <- kflow_env("FLOW_ASSESSMENT_SLUG", kflow_env("TUNA_FLOW_ASSESSMENT_SLUG", ""))
+  if (nzchar(explicit)) {
+    return(kflow_slug_value(explicit))
+  }
+  species <- kflow_slug_value(kflow_env("FLOW_SPECIES", kflow_env("TUNA_FLOW_SPECIES", "tuna")))
+  year <- kflow_slug_value(kflow_env("FLOW_ASSESSMENT_YEAR", kflow_env("TUNA_FLOW_ASSESSMENT_YEAR", "")))
+  paste0(species, year)
+}
+
+kflow_default_source_repo <- function() {
+  paste0("PacificCommunity/ofp-sam-", kflow_assessment_slug(), "-inputs")
+}
+
 kflow_clone_source <- function(work_dir = "work/source", log_file = NULL) {
-  source_repo <- kflow_env("SOURCE_REPO", kflow_env("FLOW_SOURCE_REPO", "PacificCommunity/ofp-sam-bet2026-inputs"))
+  source_repo <- kflow_env("SOURCE_REPO", kflow_env("FLOW_SOURCE_REPO", kflow_default_source_repo()))
   source_ref <- kflow_env("SOURCE_REF", kflow_env("FLOW_SOURCE_REF", "main"))
   kflow_clone_github_repo(source_repo, source_ref, work_dir = work_dir, log_file = log_file)
 }
@@ -262,7 +281,7 @@ kflow_prepare_flow_source <- function(work_dir = "work/source", log_file = NULL)
 }
 
 kflow_use_flow_source <- function() {
-  source_repo <- tolower(kflow_env("SOURCE_REPO", kflow_env("FLOW_SOURCE_REPO", "PacificCommunity/ofp-sam-bet2026-inputs")))
+  source_repo <- tolower(kflow_env("SOURCE_REPO", kflow_env("FLOW_SOURCE_REPO", kflow_default_source_repo())))
   kflow_bool("USE_FLOW_SOURCE", FALSE) ||
   kflow_bool("USE_LOCAL_SOURCE", FALSE) ||
     source_repo %in% c("flow_checkout", "local", ".", "flow", "this")
@@ -1057,7 +1076,7 @@ kflow_compact_outputs <- function(out_dir, keep = c("model_payload.rds", "model-
 }
 
 kflow_run_mfcl_smoke <- function(source_dir, out_dir, stage, log_file = NULL) {
-  base_dir <- file.path(source_dir, kflow_env("BASE_DIR", kflow_env("FLOW_BASE_INPUT_DIR", "mfcl/inputs/2023_4region_1007")))
+  base_dir <- file.path(source_dir, kflow_env("BASE_DIR", kflow_env("FLOW_BASE_INPUT_DIR", "mfcl/inputs/base")))
   model_dir <- file.path(source_dir, kflow_env("MODEL_DIR", file.path("model", kflow_env("JOB_KEY", "smoke"))))
   if (!dir.exists(base_dir)) {
     stop(sprintf("MFCL input directory was not found: %s", base_dir), call. = FALSE)
@@ -1425,7 +1444,7 @@ kflow_registry_values <- function(stage, extra = list()) {
     flow_assessment_year = kflow_env("FLOW_ASSESSMENT_YEAR", ""),
     flow_task_prefix = kflow_env("FLOW_TASK_PREFIX", ""),
     program_path = kflow_env("PROGRAM_PATH", kflow_env("FLOW_MFCL_PROGRAM", "/home/mfcl/mfclo64")),
-    source_repo = kflow_env("SOURCE_REPO", "PacificCommunity/ofp-sam-bet2026-inputs"),
+    source_repo = kflow_env("SOURCE_REPO", kflow_env("FLOW_SOURCE_REPO", kflow_default_source_repo())),
     source_ref = kflow_env("SOURCE_REF", ""),
     source_path = kflow_env("SOURCE_PATH", ""),
     use_flow_source = kflow_env("USE_FLOW_SOURCE", ""),
@@ -1460,7 +1479,7 @@ kflow_write_summary <- function(out_dir, stage, extra = list()) {
       flow_species_label = kflow_env("FLOW_SPECIES_LABEL", ""),
       flow_assessment_year = kflow_env("FLOW_ASSESSMENT_YEAR", ""),
       flow_task_prefix = kflow_env("FLOW_TASK_PREFIX", ""),
-      source_repo = kflow_env("SOURCE_REPO", "PacificCommunity/ofp-sam-bet2026-inputs"),
+      source_repo = kflow_env("SOURCE_REPO", kflow_env("FLOW_SOURCE_REPO", kflow_default_source_repo())),
       source_ref = kflow_env("SOURCE_REF", ""),
       source_path = kflow_env("SOURCE_PATH", ""),
       use_flow_source = kflow_env("USE_FLOW_SOURCE", ""),

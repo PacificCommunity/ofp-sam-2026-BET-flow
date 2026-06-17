@@ -2,23 +2,26 @@
 
 Kflow-ready model exploration workflow for tuna stock assessments.
 
-The repo is generic. Set `FLOW_SPECIES`, `FLOW_ASSESSMENT_YEAR`, an input-bundle
-repository, and recipe tables to produce species-specific task names, model
-labels, plots, and reports. The starter preset is a BET 2026 smoke workflow
-using:
+The repo is generic. It does not store MFCL input files or assessment report
+sources. Kflow job config supplies the input bundle, report repository, and
+species/year metadata through environment variables such as
+`FLOW_SOURCE_REPO`, `FLOW_BASE_INPUT_DIR`, `FLOW_REPORT_REPO`, and
+`FLOW_REPORT_PATH`.
 
-- `PacificCommunity/ofp-sam-bet2026-inputs`
-- `mfcl/inputs/2023_4region_1007`
-- `/home/mfcl/mfclo64` from the Docker image
-- `ghcr.io/pacificcommunity/tuna-flow:latest`
+The included BET 2026 starter config points to:
+
+- `FLOW_SOURCE_REPO=PacificCommunity/ofp-sam-bet2026-inputs`
+- `FLOW_BASE_INPUT_DIR=mfcl/inputs/2023_4region_1007`
+- `FLOW_REPORT_REPO=PacificCommunity/ofp-sam-bet2026-report`
+- `FLOW_REPORT_PATH=bet-2026-report`
+- `FLOW_MFCL_PROGRAM=/home/mfcl/mfclo64` from the Docker image
+- `FLOW_DOCKER_IMAGE=ghcr.io/pacificcommunity/tuna-flow:latest`
 
 The starter flow runs one base model, several explicit sensitivity recipes
 (`FixM`, `FixVB`, `Sel4`, `IndexCvHalf`), jitter-style diagnostics, a key
-derived quantities figure, and a Quarto report. The report task is registered
-separately as
-`bet-2026-report` and renders from
-`PacificCommunity/ofp-sam-bet2026-report`, so it can be rerun on existing
-figures without relaunching model or plot jobs.
+derived quantities figure, and a Quarto report. The generic report template
+lives in `PacificCommunity/ofp-sam-tuna-report`; the BET 2026 report draft
+lives in `PacificCommunity/ofp-sam-bet2026-report`.
 
 Start here:
 
