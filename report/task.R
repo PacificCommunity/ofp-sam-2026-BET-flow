@@ -200,9 +200,12 @@ for (target_dir in target_input_dirs) {
 
 figure_dir_setting <- kflow_env("REPORT_FIGURE_DIR", if (nzchar(report_source_repo)) "Figures/generated" else "Figures")
 plot_dir <- file.path(render_dir, figure_dir_setting)
+generated_figure_out_dir <- file.path(ctx$out_dir, "report-figures")
 dir.create(plot_dir, recursive = TRUE, showWarnings = FALSE)
+dir.create(generated_figure_out_dir, recursive = TRUE, showWarnings = FALSE)
 copied <- character()
 copied_sources <- character()
+copied_output <- character()
 if (nrow(plot_index)) {
   for (index in seq_len(nrow(plot_index))) {
     source_file <- plot_index$file[[index]]
@@ -211,9 +214,13 @@ if (nrow(plot_index)) {
     if (file.exists(target_path) && !identical(normalizePath(source_file, winslash = "/", mustWork = FALSE), normalizePath(target_path, winslash = "/", mustWork = FALSE))) {
       target <- sprintf("plot-%03d.%s", index, tools::file_ext(source_file))
     }
-    file.copy(source_file, file.path(plot_dir, target), overwrite = TRUE)
+    render_target <- file.path(plot_dir, target)
+    output_target <- file.path(generated_figure_out_dir, target)
+    file.copy(source_file, render_target, overwrite = TRUE)
+    file.copy(source_file, output_target, overwrite = TRUE)
     copied <- c(copied, file.path(figure_dir_setting, target))
     copied_sources <- c(copied_sources, plot_index$rel[[index]])
+    copied_output <- c(copied_output, file.path("report-figures", target))
   }
 }
 
@@ -228,8 +235,19 @@ if (length(figure_metadata_files)) {
   for (metadata_file in figure_metadata_files) {
     target <- basename(metadata_file)
     file.copy(metadata_file, file.path(plot_dir, target), overwrite = TRUE)
+    file.copy(metadata_file, file.path(generated_figure_out_dir, target), overwrite = TRUE)
   }
 }
+utils::write.csv(
+  data.frame(
+    report_figure = copied,
+    output_file = copied_output,
+    source_file = copied_sources,
+    stringsAsFactors = FALSE
+  ),
+  file.path(generated_figure_out_dir, "generated-figure-files.csv"),
+  row.names = FALSE
+)
 figure_metadata <- kflow_read_csv_union(figure_metadata_files)
 figure_metadata_for <- function(copied_path, source_rel) {
   if (is.null(figure_metadata) || !nrow(figure_metadata)) {
@@ -298,6 +316,7 @@ table_input_files <- list.files(
 )
 table_input_files <- table_input_files[
   grepl("(^|/)report-figures/tables/", table_input_files, ignore.case = TRUE) |
+    grepl("(^|/)tables/", table_input_files, ignore.case = TRUE) |
     grepl("(^|/)(table-index|mfclshiny-table-index)[.]csv$", table_input_files, ignore.case = TRUE)
 ]
 generated_table_dir <- file.path(render_dir, "tables", "generated")
@@ -429,9 +448,6 @@ if (is.na(rendered_report)) {
 }
 final_report_file <- basename(report_file)
 invisible(file.copy(rendered_report, file.path(ctx$out_dir, final_report_file), overwrite = TRUE))
-report_out_dir <- file.path(ctx$out_dir, "report")
-dir.create(report_out_dir, recursive = TRUE, showWarnings = FALSE)
-invisible(file.copy(rendered_report, file.path(report_out_dir, final_report_file), overwrite = TRUE))
 
 report_summary <- data.frame(
   run_label = kflow_env("RUN_LABEL", ""),
@@ -439,9 +455,9 @@ report_summary <- data.frame(
   registry_rows = nrow(registries),
   summary_rows = nrow(summaries),
   upstream_plot_files = nrow(plot_index),
-	  copied_plot_files = length(copied),
-	  copied_table_files = length(copied_tables),
-	  report_source_repo = report_source_repo,
+  copied_plot_files = length(copied),
+  copied_table_files = length(copied_tables),
+  report_source_repo = report_source_repo,
   report_source_ref = report_source_ref,
   report_source_path = report_source_path,
   primary_plot_file = if (length(copied)) copied[[1]] else "",
@@ -457,15 +473,20 @@ utils::write.csv(report_summary, file.path(ctx$out_dir, "report-summary.csv"), r
 writeLines(capture.output(print(report_summary)), file.path(ctx$out_dir, "report-summary.txt"))
 kflow_write_registry(ctx$out_dir, "report")
 kflow_write_summary(ctx$out_dir, "report")
+report_table_keep <- list.files(generated_table_out_dir, recursive = TRUE, full.names = FALSE)
+report_table_keep <- report_table_keep[
+  !grepl("(^|/)(mfclshiny-)?table-index[.]csv$|(^|/)generated-table-index[.]csv$", report_table_keep, ignore.case = TRUE)
+]
 kflow_compact_outputs(
   ctx$out_dir,
   keep = c(
     final_report_file,
-    file.path("report", final_report_file),
     "report-summary.csv",
-    "report-input-registry.csv",
-    "report-input-summaries.csv",
-    "model-registry.csv",
-    file.path("report-tables", list.files(generated_table_out_dir, recursive = TRUE, full.names = FALSE))
+    file.path(
+      "report-figures",
+      list.files(generated_figure_out_dir, pattern = "[.]png$", recursive = TRUE, full.names = FALSE, ignore.case = TRUE)
+    ),
+    file.path("report-figures", "generated-figure-files.csv"),
+    file.path("report-tables", report_table_keep)
   )
 )

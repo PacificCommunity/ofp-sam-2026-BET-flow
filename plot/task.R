@@ -60,6 +60,64 @@ mfclshiny_status <- if (file.exists(mfclshiny_status_file)) {
 } else {
   ""
 }
+mirror_report_bundle <- function(out_dir, report_dir) {
+  if (!dir.exists(report_dir)) {
+    return(character())
+  }
+
+  copied <- character()
+  keep_figure_formats <- kflow_split(kflow_env("PLOT_OUTPUT_FIGURE_FORMATS", "png"))
+  keep_figure_formats <- unique(tolower(keep_figure_formats))
+  if (!length(keep_figure_formats)) {
+    keep_figure_formats <- "png"
+  }
+  copy_one <- function(from, rel) {
+    if (!file.exists(from)) {
+      return(invisible(FALSE))
+    }
+    to <- file.path(out_dir, rel)
+    dir.create(dirname(to), recursive = TRUE, showWarnings = FALSE)
+    ok <- file.copy(from, to, overwrite = TRUE)
+    if (isTRUE(ok)) {
+      copied <<- c(copied, rel)
+    }
+    invisible(ok)
+  }
+
+  copy_one(file.path(report_dir, "mfclshiny-report-figures.html"), "plot-report.html")
+  copy_one(file.path(report_dir, "mfclshiny-report-figures.qmd"), "plot-report.qmd")
+
+  for (subdir in c("figures", "tables")) {
+    source_dir <- file.path(report_dir, subdir)
+    if (!dir.exists(source_dir)) {
+      next
+    }
+    files <- list.files(source_dir, recursive = TRUE, full.names = TRUE, all.files = TRUE, no.. = TRUE)
+    for (file in files[file.exists(files) & !dir.exists(files)]) {
+      ext <- tolower(tools::file_ext(file))
+      if (identical(subdir, "figures") && !ext %in% keep_figure_formats) {
+        next
+      }
+      if (identical(subdir, "tables") && !identical(ext, "csv")) {
+        next
+      }
+      rel <- file.path(subdir, substring(normalizePath(file, winslash = "/", mustWork = FALSE), nchar(normalizePath(source_dir, winslash = "/", mustWork = FALSE)) + 2L))
+      copy_one(file, rel)
+    }
+  }
+
+  metadata_files <- c(
+    "figure-index.csv",
+    "table-index.csv",
+    "report-files.csv",
+    "mfclshiny-report-summary.csv"
+  )
+  for (file in metadata_files) {
+    copy_one(file.path(report_dir, file), file)
+  }
+
+  unique(copied)
+}
 report_figure <- if (file.exists(file.path(ctx$out_dir, "report-figures", "key-quantities.png"))) {
   "report-figures/key-quantities.png"
 } else if (file.exists(file.path(ctx$out_dir, "key-quantities.png"))) {
@@ -76,6 +134,7 @@ report_figure <- if (file.exists(file.path(ctx$out_dir, "report-figures", "key-q
   ""
 }
 report_figure_dir <- file.path(ctx$out_dir, "report-figures")
+mirror_artifacts <- mirror_report_bundle(ctx$out_dir, report_figure_dir)
 report_artifacts <- if (dir.exists(report_figure_dir)) {
   sort(unique(file.path(
     "report-figures",
@@ -123,8 +182,19 @@ utils::write.csv(plot_summary, file.path(ctx$out_dir, "plot-summary.csv"), row.n
 writeLines(capture.output(print(plot_summary)), file.path(ctx$out_dir, "plot-summary.txt"))
 kflow_write_registry(ctx$out_dir, "plot")
 kflow_write_summary(ctx$out_dir, "plot")
-plot_keep <- c("plot-summary.csv", "model-registry.csv")
-plot_keep <- c(plot_keep, if (length(report_artifacts)) report_artifacts else if (nzchar(plot_file)) plot_file else character())
+plot_keep <- c(
+  "plot-summary.csv",
+  "model-registry.csv",
+  "mfclshiny-status.txt",
+  "plot-report.html",
+  "plot-report.qmd",
+  "figure-index.csv",
+  "table-index.csv",
+  "report-files.csv",
+  "mfclshiny-report-summary.csv"
+)
+plot_keep <- c(plot_keep, mirror_artifacts)
+plot_keep <- c(plot_keep, if (!length(mirror_artifacts) && nzchar(plot_file)) plot_file else character())
 kflow_compact_outputs(
   ctx$out_dir,
   keep = unique(plot_keep)
