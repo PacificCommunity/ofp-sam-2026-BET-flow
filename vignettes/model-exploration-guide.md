@@ -8,8 +8,8 @@ this file when you need to remember how the pieces fit together.
 Kflow runs dependency-aware Docker jobs from R:
 
 ```text
-base -> sensitivity -> diagnostics -> plot -> report
-base ----------------> diagnostics -> plot -> report
+base -> sensitivity -> diagnostics -> outputs -> curation -> draft
+base ----------------> diagnostics -> outputs -> curation -> draft
 ```
 
 The local R session registers and launches jobs. The actual MFCL work runs
@@ -40,10 +40,14 @@ Sys.setenv(
   FLOW_SOURCE_REPO = "PacificCommunity/ofp-sam-bet2026-inputs",
   FLOW_SOURCE_REF = "main",
   FLOW_BASE_INPUT_DIR = "mfcl/inputs/2023_4region_1007",
-  FLOW_REPORT_REPO = "PacificCommunity/ofp-sam-bet-2026-report",
-  FLOW_REPORT_REF = "main",
-  FLOW_REPORT_PATH = "bet-2026-report",
-  FLOW_REPORT_MAIN = "assessment-report.qmd",
+  FLOW_OUTPUTS_REPO = "PacificCommunity/ofp-sam-bet-2026-outputs",
+  FLOW_OUTPUTS_REF = "main",
+  FLOW_CURATION_REPO = "PacificCommunity/ofp-sam-bet-2026-curation",
+  FLOW_CURATION_REF = "main",
+  FLOW_DRAFT_REPO = "PacificCommunity/ofp-sam-bet-2026-draft",
+  FLOW_DRAFT_REF = "main",
+  FLOW_DRAFT_PATH = "bet-2026-report",
+  FLOW_DRAFT_MAIN = "assessment-report.qmd",
   FLOW_MFCL_PROGRAM = "/home/mfcl/mfclo64"
 )
 
@@ -53,9 +57,13 @@ source("R/workflow.R")
 The same settings are available in `configs/bet-2026.env` for scripts or shell
 sessions that prefer an env file. With that preset, task codes are generated as
 `bet-2026-base`,
-`bet-2026-sensitivity`, `bet-2026-diagnostics`, `bet-2026-plot`, and
-`bet-2026-report`. For YFT, set `FLOW_SPECIES = "YFT"` and choose the YFT input
-directory and report repository; the same tables and dependencies still work.
+`bet-2026-sensitivity`, `bet-2026-diagnostics`, `bet-2026-outputs`,
+`bet-2026-curation`, and `bet-2026-draft`. The old helper names `plot` and
+`report` remain aliases for `outputs` and `draft` so older notes keep working,
+but new work should use the clearer stage names. For YFT, set
+`FLOW_SPECIES = "YFT"` and choose the YFT input directory and assessment-specific
+outputs, curation, and draft repositories; the same tables and dependencies
+still work.
 
 For local dry runs before the input bundle is pushed, set `SOURCE_PATH` or
 `FLOW_SOURCE_PATH` to a local input-bundle checkout. Do not put a local path into
@@ -72,8 +80,11 @@ The starter objects are:
 - `starter_diagnostics_recipes`: short recipe table for diagnostics.
 - `sensitivity_models`: generated Kflow rows.
 - `diagnostics_runs`: generated Kflow rows.
-- `plot_runs`: plot jobs that collect one or many diagnostics.
-- `report_runs`: Quarto report jobs.
+- `outputs_runs`: jobs that collect one or many diagnostics and build the broad
+  mfclshiny figure/table bundle.
+- `curation_runs`: jobs that select/order/caption report items and write QMD
+  sections.
+- `draft_runs`: Quarto draft render jobs.
 
 For many models, add rows to recipe tables rather than copying long Kflow rows.
 
@@ -186,39 +197,61 @@ diagnostics_runs <- rbind(
 )
 ```
 
-## Plot and report
+## Outputs, curation, and draft
 
-`plot_runs$INPUT_KEY` can contain one diagnostics key or a comma-separated list.
-That lets one plot job collect many models:
-
-```r
-plot_runs$INPUT_KEY <- paste(diagnostics_runs$JOB_KEY, collapse = ",")
-```
-
-The plot job writes:
-
-- `report-figures/depletion-smoke.png`
-- `plot-summary.csv`
-- `model-registry.csv`
-
-The report job writes:
-
-- `${REPORT_FILE_STEM}.pdf` or `.html`, depending on `REPORT_RENDER_FORMAT`
-- `report-summary.csv`
-- `model-registry.csv`
-
-The report job clones `REPORT_SOURCE_REPO`, enters `REPORT_SOURCE_PATH` when it
-is set, renders `REPORT_TEMPLATE_MAIN` or `REPORT_MAIN`, copies upstream
-report-ready figures into the report, and keeps only compact report outputs.
-That lets you rerun only the report stage from an existing plot job:
+`outputs_runs$INPUT_KEY` can contain one diagnostics key or a comma-separated
+list. That lets one outputs job collect many models:
 
 ```r
-launch_report(report_from(flow_task_codes[["plot"]], "plot-depletion-smoke", "report-rerun"))
+outputs_runs$INPUT_KEY <- paste(diagnostics_runs$JOB_KEY, collapse = ",")
 ```
 
-If figures already exist in a report-style `Figures/` directory, pass that path
-through `REPORT_FIGURE_INPUT_DIR` and keep `REPORT_REWRITE_FIGURES=false` so the
-report source's own figure section is rendered as-is.
+The outputs job writes a full report-ready bundle:
+
+- `figures/*.png` plus optimized sidecars when available
+- `tables/*.csv`
+- `figure-index.csv`
+- `table-index.csv`
+- `_review/plot-report.html`
+
+The curation job reads that bundle and writes:
+
+- `curation/curation-board.html`
+- `curation/report-selection.csv`
+- `curation/report-selection.yml`
+- `draft/sections/Figures.qmd`
+- `draft/sections/Tables.qmd`
+- selected files under `figures/` and `tables/`
+
+Most runs can use the automatic curation. If you need to change the report
+contents, open `curation-board.html`, edit placement/order/section/title/caption
+fields, export YAML, paste it into `catalog/curation.yml` in
+`ofp-sam-bet-2026-curation`, and rerun curation.
+
+The draft job consumes the curated QMD sections, clones `FLOW_DRAFT_REPO`, enters
+`FLOW_DRAFT_PATH`, renders `FLOW_DRAFT_MAIN`, and writes:
+
+- `${FLOW_DRAFT_FILE_STEM}.pdf` or `.html`, depending on `REPORT_RENDER_FORMAT`
+- the curated figures and tables used by the report
+- `indices/report-output-index.csv`
+
+That lets you rerun only the draft stage from an existing curation job:
+
+```r
+launch_draft(report_from(flow_task_codes[["curation"]], "curation-report-assets", "draft-rerun"))
+```
+
+If captions or order are edited directly in the generated draft QMD, sync those
+manual edits back into curation before the next automated run:
+
+```sh
+cd ../ofp-sam-bet-2026-curation
+Rscript R/sync_from_report.R /path/to/draft-or-report/sections catalog/curation.yml
+```
+
+That is the round-trip contract. Later, when the hand-edited final
+`ofp-sam-bet-2026-report` repository exists, the workflow can point the last
+stage at that repository instead of `ofp-sam-bet-2026-draft`.
 
 ## Register and launch
 
@@ -229,8 +262,9 @@ register_tasks()
 launch_base()
 launch_sensitivity()
 launch_diagnostics()
-launch_plot()
-launch_report()
+launch_outputs()
+launch_curation()
+launch_draft()
 ```
 
 For a quick plan preview:

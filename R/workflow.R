@@ -2,7 +2,7 @@
 #
 # This is the main file to edit day to day.
 # - Edit the tables near the top to add/remove base models, sensitivities,
-#   selftests, plot jobs, or reports.
+#   diagnostics, output bundles, curation runs, or draft renders.
 # - Use the launch_*() functions near the bottom to submit jobs to Kflow.
 # - Keep heavy job internals in R/job_helpers.R and large combinatorics in
 #   R/plan.R so this file stays readable.
@@ -154,12 +154,27 @@ flow_source_repo <- flow_env_any(
 flow_source_ref <- flow_env_any(c("FLOW_SOURCE_REF", "TUNA_FLOW_SOURCE_REF"), "main")
 flow_source_path <- flow_env_any(c("FLOW_SOURCE_PATH", "TUNA_FLOW_SOURCE_PATH", "SOURCE_PATH"), "")
 flow_report_repo <- flow_env_any(
-  c("FLOW_REPORT_REPO", "TUNA_FLOW_REPORT_REPO"),
-  paste0("PacificCommunity/ofp-sam-", flow_assessment_slug, "-report")
+  c("FLOW_DRAFT_REPO", "TUNA_FLOW_DRAFT_REPO", "FLOW_REPORT_REPO", "TUNA_FLOW_REPORT_REPO"),
+  paste0("PacificCommunity/ofp-sam-", flow_assessment_slug, "-draft")
 )
-flow_report_ref <- flow_env_any(c("FLOW_REPORT_REF", "TUNA_FLOW_REPORT_REF"), "main")
-flow_report_path <- flow_env_any(c("FLOW_REPORT_PATH", "TUNA_FLOW_REPORT_PATH"), flow_report_folder)
-flow_report_main <- flow_env_any(c("FLOW_REPORT_MAIN", "TUNA_FLOW_REPORT_MAIN"), "assessment-report.qmd")
+flow_report_ref <- flow_env_any(c("FLOW_DRAFT_REF", "TUNA_FLOW_DRAFT_REF", "FLOW_REPORT_REF", "TUNA_FLOW_REPORT_REF"), "main")
+flow_report_path <- flow_env_any(c("FLOW_DRAFT_PATH", "TUNA_FLOW_DRAFT_PATH", "FLOW_REPORT_PATH", "TUNA_FLOW_REPORT_PATH"), flow_report_folder)
+flow_report_main <- flow_env_any(c("FLOW_DRAFT_MAIN", "TUNA_FLOW_DRAFT_MAIN", "FLOW_REPORT_MAIN", "TUNA_FLOW_REPORT_MAIN"), "assessment-report.qmd")
+flow_outputs_repo <- flow_env_any(
+  c("FLOW_OUTPUTS_REPO", "TUNA_FLOW_OUTPUTS_REPO", "FLOW_PLOT_REPO", "TUNA_FLOW_PLOT_REPO"),
+  paste0("PacificCommunity/ofp-sam-", flow_assessment_slug, "-outputs")
+)
+flow_outputs_ref <- flow_env_any(c("FLOW_OUTPUTS_REF", "TUNA_FLOW_OUTPUTS_REF", "FLOW_PLOT_REF", "TUNA_FLOW_PLOT_REF"), "main")
+flow_outputs_target_folder <- flow_env_any(c("FLOW_OUTPUTS_TARGET_FOLDER", "TUNA_FLOW_OUTPUTS_TARGET_FOLDER"), "")
+flow_curation_repo <- flow_env_any(
+  c("FLOW_CURATION_REPO", "TUNA_FLOW_CURATION_REPO"),
+  paste0("PacificCommunity/ofp-sam-", flow_assessment_slug, "-curation")
+)
+flow_curation_ref <- flow_env_any(c("FLOW_CURATION_REF", "TUNA_FLOW_CURATION_REF"), "main")
+flow_curation_target_folder <- flow_env_any(c("FLOW_CURATION_TARGET_FOLDER", "TUNA_FLOW_CURATION_TARGET_FOLDER"), "")
+flow_draft_task_repo <- flow_env_any(c("FLOW_DRAFT_TASK_REPO", "TUNA_FLOW_DRAFT_TASK_REPO"), flow_report_repo)
+flow_draft_task_ref <- flow_env_any(c("FLOW_DRAFT_TASK_REF", "TUNA_FLOW_DRAFT_TASK_REF"), flow_report_ref)
+flow_draft_target_folder <- flow_env_any(c("FLOW_DRAFT_TARGET_FOLDER", "TUNA_FLOW_DRAFT_TARGET_FOLDER"), "")
 flow_mfclshiny_ref <- flow_env_any(c("FLOW_MFCLSHINY_REF", "TUNA_FLOW_MFCLSHINY_REF"), "main")
 flow_docker_image <- flow_env_any(
   c("FLOW_DOCKER_IMAGE", "TUNA_FLOW_DOCKER_IMAGE"),
@@ -176,7 +191,7 @@ flow_model_make_targets <- flow_env_any(
   if (identical(flow_model_backend, "mfcl_full")) "mfcl-full" else "mfcl-smoke"
 )
 flow_validation_tasks <- c("selftest", "jitter", "retro", "hessian", "likprof")
-flow_task_names <- c("base", "sensitivity", flow_validation_tasks, "plot", "report")
+flow_task_names <- c("base", "sensitivity", flow_validation_tasks, "outputs", "curation", "draft")
 flow_task_codes <- setNames(paste(flow_task_prefix, flow_task_names, sep = "-"), flow_task_names)
 flow_task_labels <- c(
   base = "Base model",
@@ -186,14 +201,27 @@ flow_task_labels <- c(
   retro = "Retro",
   hessian = "Hessian",
   likprof = "Likprof",
-  plot = "Report figures",
-  report = "Assessment report"
+  outputs = "Report outputs",
+  curation = "Report curation",
+  draft = "Assessment draft"
 )
 flow_task_codes[["diagnostics"]] <- flow_task_codes[["selftest"]]
-flow_task_codes[["report"]] <- flow_env_any(
-  c("FLOW_REPORT_TASK_CODE", "TUNA_FLOW_REPORT_TASK_CODE"),
-  paste(flow_task_prefix, "report", sep = "-")
+flow_task_codes[["outputs"]] <- flow_env_any(
+  c("FLOW_OUTPUTS_TASK_CODE", "TUNA_FLOW_OUTPUTS_TASK_CODE", "FLOW_PLOT_TASK_CODE", "TUNA_FLOW_PLOT_TASK_CODE"),
+  paste(flow_task_prefix, "outputs", sep = "-")
 )
+flow_task_codes[["curation"]] <- flow_env_any(
+  c("FLOW_CURATION_TASK_CODE", "TUNA_FLOW_CURATION_TASK_CODE"),
+  paste(flow_task_prefix, "curation", sep = "-")
+)
+flow_task_codes[["draft"]] <- flow_env_any(
+  c("FLOW_DRAFT_TASK_CODE", "TUNA_FLOW_DRAFT_TASK_CODE", "FLOW_REPORT_TASK_CODE", "TUNA_FLOW_REPORT_TASK_CODE"),
+  paste(flow_task_prefix, "draft", sep = "-")
+)
+flow_task_codes[["plot"]] <- flow_task_codes[["outputs"]]
+flow_task_codes[["report"]] <- flow_task_codes[["draft"]]
+flow_task_labels[["plot"]] <- flow_task_labels[["outputs"]]
+flow_task_labels[["report"]] <- flow_task_labels[["draft"]]
 flow_default_program <- flow_env_any(c("FLOW_MFCL_PROGRAM", "TUNA_FLOW_MFCL_PROGRAM"), "/home/mfcl/mfclo64")
 flow_default_input_dir <- flow_env_any(c("FLOW_BASE_INPUT_DIR", "TUNA_FLOW_BASE_INPUT_DIR"), "mfcl/inputs/base")
 flow_base_input_dirs <- flow_split_csv(flow_env_any(c("FLOW_BASE_INPUT_DIRS", "TUNA_FLOW_BASE_INPUT_DIRS"), flow_default_input_dir))
@@ -203,7 +231,10 @@ if (!length(flow_base_input_dirs)) {
 flow_default_input_variant <- flow_env_any(c("FLOW_BASE_INPUT_VARIANT", "TUNA_FLOW_BASE_INPUT_VARIANT"), basename(flow_base_input_dirs[[1]]))
 flow_base_job_key <- flow_env_any(c("FLOW_BASE_JOB_KEY", "TUNA_FLOW_BASE_JOB_KEY"), if (isTRUE(flow_is_full_run)) "base" else "base-smoke")
 flow_base_token <- flow_env_any(c("FLOW_BASE_TOKEN", "TUNA_FLOW_BASE_TOKEN"), "Base")
-flow_report_file_stem <- flow_env_any(c("FLOW_REPORT_FILE_STEM", "TUNA_FLOW_REPORT_FILE_STEM"), paste(flow_task_prefix, "report", sep = "-"))
+flow_report_file_stem <- flow_env_any(
+  c("FLOW_DRAFT_FILE_STEM", "TUNA_FLOW_DRAFT_FILE_STEM", "FLOW_REPORT_FILE_STEM", "TUNA_FLOW_REPORT_FILE_STEM"),
+  paste(flow_task_prefix, "draft", sep = "-")
+)
 flow_ini_version_target <- flow_env_any(c("FLOW_MFCL_INI_VERSION_TARGET", "MFCL_INI_VERSION_TARGET"), "1007")
 flow_base_tokens <- flow_split_csv(flow_env_any(c("FLOW_BASE_TOKENS", "TUNA_FLOW_BASE_TOKENS"), ""))
 flow_base_job_keys <- flow_split_csv(flow_env_any(c("FLOW_BASE_JOB_KEYS", "TUNA_FLOW_BASE_JOB_KEYS"), ""))
@@ -608,49 +639,71 @@ hessian_runs <- validation_runs_by_stage[["hessian"]]
 likprof_runs <- validation_runs_by_stage[["likprof"]]
 diagnostics_runs <- validation_runs
 
-flow_plot_job_key <- flow_env_any(c("FLOW_PLOT_JOB_KEY", "TUNA_FLOW_PLOT_JOB_KEY"), if (isTRUE(flow_is_full_run)) "plot-report-figures" else "plot-key-quantities-smoke")
-flow_report_job_key <- flow_env_any(c("FLOW_REPORT_JOB_KEY", "TUNA_FLOW_REPORT_JOB_KEY"), if (isTRUE(flow_is_full_run)) "report-assessment" else "report-key-quantities-smoke")
-flow_plot_title <- flow_env_any(c("FLOW_PLOT_TITLE", "TUNA_FLOW_PLOT_TITLE"), paste(flow_assessment_label, "report figures"))
-flow_report_render_format <- flow_env_any(c("FLOW_REPORT_RENDER_FORMAT", "TUNA_FLOW_REPORT_RENDER_FORMAT"), "pdf")
+flow_outputs_job_key <- flow_env_any(c("FLOW_OUTPUTS_JOB_KEY", "TUNA_FLOW_OUTPUTS_JOB_KEY", "FLOW_PLOT_JOB_KEY", "TUNA_FLOW_PLOT_JOB_KEY"), if (isTRUE(flow_is_full_run)) "outputs-report-assets" else "outputs-key-quantities-smoke")
+flow_curation_job_key <- flow_env_any(c("FLOW_CURATION_JOB_KEY", "TUNA_FLOW_CURATION_JOB_KEY"), if (isTRUE(flow_is_full_run)) "curation-report-assets" else "curation-key-quantities-smoke")
+flow_draft_job_key <- flow_env_any(c("FLOW_DRAFT_JOB_KEY", "TUNA_FLOW_DRAFT_JOB_KEY", "FLOW_REPORT_JOB_KEY", "TUNA_FLOW_REPORT_JOB_KEY"), if (isTRUE(flow_is_full_run)) "draft-assessment" else "draft-key-quantities-smoke")
+flow_outputs_title <- flow_env_any(c("FLOW_OUTPUTS_TITLE", "TUNA_FLOW_OUTPUTS_TITLE", "FLOW_PLOT_TITLE", "TUNA_FLOW_PLOT_TITLE"), paste(flow_assessment_label, "report outputs"))
+flow_report_render_format <- flow_env_any(c("FLOW_DRAFT_RENDER_FORMAT", "TUNA_FLOW_DRAFT_RENDER_FORMAT", "FLOW_REPORT_RENDER_FORMAT", "TUNA_FLOW_REPORT_RENDER_FORMAT"), "pdf")
 
-plot_runs <- data.frame(
-  RUN_LABEL = flow_plot_job_key,
-  JOB_KEY = flow_plot_job_key,
-  MODEL_KEY = flow_plot_job_key,
-  MODEL_TOKEN = "Plot",
-  MODEL_NAME = paste(flow_assessment_label, "report figures"),
+outputs_runs <- data.frame(
+  RUN_LABEL = flow_outputs_job_key,
+  JOB_KEY = flow_outputs_job_key,
+  MODEL_KEY = flow_outputs_job_key,
+  MODEL_TOKEN = "Outputs",
+  MODEL_NAME = paste(flow_assessment_label, "report outputs"),
   BASE_MODEL_KEY = flow_base_job_key,
-  CHANGE_TOKEN = "Plot",
-  CHANGE_GROUP = "plot",
+  CHANGE_TOKEN = "Outputs",
+  CHANGE_GROUP = "outputs",
   CHANGE_SUMMARY = "Builds the mfclshiny report-ready figure bundle from selected model and selftest outputs.",
-  JOB_TITLE = "Plot: report figures",
+  JOB_TITLE = "Outputs: report assets",
   JOB_DESCRIPTION = "Builds mfclshiny report figures, tables, and HTML review.",
   INPUT_TASK = paste(validation_runs$VALIDATION_TASK_CODE, collapse = ","),
   INPUT_KEY = paste(validation_runs$JOB_KEY, collapse = ","),
-  PLOT_TITLE = flow_plot_title,
+  PLOT_TITLE = flow_outputs_title,
   PLOT_BACKEND = "mfclshiny",
   MFCLSHINY_SCRIPT = "hooks/depletion_smoke.R",
   REPORT_FIGURE_BASENAME = "key-quantities",
-  MODEL_LABEL = "Report figures",
-  PLOT_LABEL = "Report figures",
-  REPORT_LABEL = "Report figures",
+  MODEL_LABEL = "Report outputs",
+  PLOT_LABEL = "Report outputs",
+  REPORT_LABEL = "Report outputs",
   stringsAsFactors = FALSE
 )
 
-report_runs <- data.frame(
-  RUN_LABEL = flow_report_job_key,
-  JOB_KEY = flow_report_job_key,
-  MODEL_KEY = flow_report_job_key,
-  MODEL_TOKEN = "Report",
-  MODEL_NAME = paste(flow_assessment_label, "assessment report"),
+curation_runs <- data.frame(
+  RUN_LABEL = flow_curation_job_key,
+  JOB_KEY = flow_curation_job_key,
+  MODEL_KEY = flow_curation_job_key,
+  MODEL_TOKEN = "Curation",
+  MODEL_NAME = paste(flow_assessment_label, "report curation"),
   BASE_MODEL_KEY = flow_base_job_key,
-  CHANGE_TOKEN = "Report",
-  CHANGE_GROUP = "report",
-  CHANGE_SUMMARY = "Renders the assessment report from the selected report-ready figure bundle.",
-  JOB_TITLE = "Report: assessment",
-  JOB_DESCRIPTION = "Renders the Quarto assessment report from Kflow outputs.",
-  INPUT_TASK = flow_task_codes[["plot"]],
-  INPUT_KEY = flow_plot_job_key,
+  CHANGE_TOKEN = "Curation",
+  CHANGE_GROUP = "curation",
+  CHANGE_SUMMARY = "Selects, orders, and captions report-ready outputs before drafting.",
+  JOB_TITLE = "Curation: report assets",
+  JOB_DESCRIPTION = "Builds curated QMD sections for the assessment draft.",
+  INPUT_TASK = flow_task_codes[["outputs"]],
+  INPUT_KEY = flow_outputs_job_key,
+  KFLOW_RUNTIME_PACKAGES = "none",
+  MODEL_LABEL = "Report curation",
+  PLOT_LABEL = "Curation",
+  REPORT_LABEL = "Report curation",
+  stringsAsFactors = FALSE
+)
+
+draft_runs <- data.frame(
+  RUN_LABEL = flow_draft_job_key,
+  JOB_KEY = flow_draft_job_key,
+  MODEL_KEY = flow_draft_job_key,
+  MODEL_TOKEN = "Draft",
+  MODEL_NAME = paste(flow_assessment_label, "assessment draft"),
+  BASE_MODEL_KEY = flow_base_job_key,
+  CHANGE_TOKEN = "Draft",
+  CHANGE_GROUP = "draft",
+  CHANGE_SUMMARY = "Renders the automatic assessment draft from the curated output bundle.",
+  JOB_TITLE = "Draft: assessment",
+  JOB_DESCRIPTION = "Renders the Quarto assessment draft from curated Kflow outputs.",
+  INPUT_TASK = flow_task_codes[["curation"]],
+  INPUT_KEY = flow_curation_job_key,
   REPORT_TITLE = flow_report_file_stem,
   REPORT_FILE_STEM = flow_report_file_stem,
   REPORT_SOURCE_REPO = flow_report_repo,
@@ -664,12 +717,15 @@ report_runs <- data.frame(
   REPORT_REWRITE_TABLES = "false",
   REPORT_COPY_FIGURE_TREE = "true",
   REPORT_INCLUDE_GENERATED_TABLES = "true",
-  KFLOW_RUNTIME_PACKAGES = "none",
+  KFLOW_RUNTIME_PACKAGES = paste0("mfclshiny=PacificCommunity/mfclshiny@", flow_mfclshiny_ref),
   MODEL_LABEL = "Assessment report",
   PLOT_LABEL = "Report",
   REPORT_LABEL = "Assessment report",
   stringsAsFactors = FALSE
 )
+
+plot_runs <- outputs_runs
+report_runs <- draft_runs
 
 # ---- Runtime package defaults ----------------------------------------------------
 
@@ -683,8 +739,14 @@ runtime_package_specs <- function(backend, stage = "", plot_backend = "", mfclsh
   stage <- tolower(as.character(stage %||% ""))
   plot_backend <- tolower(as.character(plot_backend %||% ""))
   mfclshiny_script <- as.character(mfclshiny_script %||% "")
-  if (identical(stage, "report")) {
+  if (identical(stage, "curation")) {
     return("none")
+  }
+  if (identical(stage, "draft") || identical(stage, "report")) {
+    return(specs[["mfclshiny"]])
+  }
+  if (identical(stage, "outputs")) {
+    return(specs[["mfclshiny"]])
   }
   if (identical(stage, "plot") || identical(plot_backend, "mfclshiny") || nzchar(mfclshiny_script)) {
     return(specs[["mfclshiny"]])
@@ -968,7 +1030,13 @@ sensitivity_model <- function(job_key,
 
 # ---- Launch helpers --------------------------------------------------------------
 
-launch_rows <- function(task_code, target_folder, rows, tags = list(stage = target_folder), ...) {
+launch_rows <- function(task_code,
+                        target_folder,
+                        rows,
+                        tags = list(stage = target_folder),
+                        repo = flow_kflow_repo,
+                        branch = flow_kflow_branch,
+                        ...) {
   flow_require_kflowkit()
   rows <- common_env(rows)
   lapply(seq_len(nrow(rows)), function(index) {
@@ -976,8 +1044,8 @@ launch_rows <- function(task_code, target_folder, rows, tags = list(stage = targ
     KflowKit::kflow_job_launch(
       report_code = task_code,
       config = row,
-      repo = flow_kflow_repo,
-      branch = flow_kflow_branch,
+      repo = repo,
+      branch = branch,
       target_folder = target_folder,
       docker_image = flow_docker_image,
       input_jobs = input_selector_for_row(row),
@@ -1013,10 +1081,18 @@ launch_rows_batched <- function(task_code,
 register_tasks <- function(...) {
   flow_require_kflowkit()
   task_paths <- c("base", "sensitivity", flow_validation_tasks, "plot", "report")
+  task_codes <- c(
+    unname(flow_task_codes[c("base", "sensitivity", flow_validation_tasks)]),
+    unname(flow_task_codes[c("outputs", "draft")])
+  )
+  task_names <- c(
+    unname(flow_task_labels[c("base", "sensitivity", flow_validation_tasks)]),
+    unname(flow_task_labels[c("outputs", "draft")])
+  )
   KflowKit::kflow_register_workflow(
     paths = task_paths,
-    codes = unname(flow_task_codes[task_paths]),
-    names = unname(flow_task_labels[task_paths]),
+    codes = task_codes,
+    names = task_names,
     repo = flow_kflow_repo,
     branch = flow_kflow_branch,
     target_folders = task_paths,
@@ -1077,11 +1153,47 @@ launch_validation <- function(rows = validation_runs, batch_size = Inf, limit = 
 launch_diagnostics <- launch_validation
 
 launch_plot <- function(rows = plot_runs, ...) {
-  launch_rows(flow_task_codes[["plot"]], "plot", rows, tags = list(stage = "plot"), ...)
+  launch_outputs(rows = rows, ...)
+}
+
+launch_outputs <- function(rows = outputs_runs, ...) {
+  launch_rows(
+    flow_task_codes[["outputs"]],
+    flow_outputs_target_folder,
+    rows,
+    tags = list(stage = "outputs"),
+    repo = flow_outputs_repo,
+    branch = flow_outputs_ref,
+    ...
+  )
+}
+
+launch_curation <- function(rows = curation_runs, ...) {
+  launch_rows(
+    flow_task_codes[["curation"]],
+    flow_curation_target_folder,
+    rows,
+    tags = list(stage = "curation"),
+    repo = flow_curation_repo,
+    branch = flow_curation_ref,
+    ...
+  )
 }
 
 launch_report <- function(rows = report_runs, ...) {
-  launch_rows(flow_task_codes[["report"]], "report", rows, tags = list(stage = "report"), ...)
+  launch_draft(rows = rows, ...)
+}
+
+launch_draft <- function(rows = draft_runs, ...) {
+  launch_rows(
+    flow_task_codes[["draft"]],
+    flow_draft_target_folder,
+    rows,
+    tags = list(stage = "draft"),
+    repo = flow_draft_task_repo,
+    branch = flow_draft_task_ref,
+    ...
+  )
 }
 
 selftest_from <- function(input_task,
@@ -1123,12 +1235,12 @@ selftest_from <- function(input_task,
 
 diagnostics_from <- selftest_from
 
-plot_from <- function(input_task, input_key, job_key, title = paste("Plot:", input_key)) {
+plot_from <- function(input_task, input_key, job_key, title = paste("Outputs:", input_key)) {
   data.frame(
     RUN_LABEL = job_key,
     JOB_KEY = job_key,
     JOB_TITLE = title,
-    JOB_DESCRIPTION = paste("Creates plots from", input_task, input_key),
+    JOB_DESCRIPTION = paste("Creates report outputs from", input_task, input_key),
     INPUT_TASK = input_task,
     INPUT_KEY = input_key,
     PLOT_TITLE = title,
@@ -1140,7 +1252,7 @@ plot_from <- function(input_task, input_key, job_key, title = paste("Plot:", inp
 report_from <- function(input_task = "",
                         input_key = "",
                         job_key,
-                        title = paste("Report:", input_key),
+                        title = paste("Draft:", input_key),
                         report_source_repo = flow_report_repo,
                         report_source_ref = flow_report_ref,
                         report_source_path = flow_report_path,
@@ -1155,14 +1267,14 @@ report_from <- function(input_task = "",
     JOB_KEY = job_key,
     JOB_TITLE = title,
     JOB_DESCRIPTION = if (nzchar(input_task) && nzchar(input_key)) {
-      paste("Renders a Quarto report from", input_task, input_key)
+      paste("Renders a Quarto draft from", input_task, input_key)
     } else {
       paste("Renders", report_source_repo, "directly")
     },
     INPUT_TASK = input_task,
     INPUT_KEY = input_key,
-    CHANGE_GROUP = "report",
-    KFLOW_RUNTIME_PACKAGES = "none",
+    CHANGE_GROUP = "draft",
+    KFLOW_RUNTIME_PACKAGES = paste0("mfclshiny=PacificCommunity/mfclshiny@", flow_mfclshiny_ref),
     REPORT_TITLE = title,
     REPORT_FILE_STEM = flow_report_file_stem,
     REPORT_SOURCE_REPO = report_source_repo,
@@ -1189,13 +1301,14 @@ launch_example_flow <- function(...) {
     retro = launch_retro(...),
     hessian = launch_hessian(...),
     likprof = launch_likprof(...),
-    plot = launch_plot(...),
-    report = launch_report(...)
+    outputs = launch_outputs(...),
+    curation = launch_curation(...),
+    draft = launch_draft(...)
   )
 }
 
 launch_stage <- function(stage, rows, batch_size = Inf, limit = Inf, ...) {
-  stage <- match.arg(stage, c("base", "sensitivity", "diagnostics", flow_validation_tasks, "plot", "report"))
+  stage <- match.arg(stage, c("base", "sensitivity", "diagnostics", flow_validation_tasks, "outputs", "curation", "draft", "plot", "report"))
   switch(
     stage,
     base = launch_rows_batched(flow_task_codes[["base"]], "base", rows, batch_size = batch_size, limit = limit, tags = list(stage = "base"), ...),
@@ -1206,8 +1319,11 @@ launch_stage <- function(stage, rows, batch_size = Inf, limit = Inf, ...) {
     retro = launch_rows_batched(flow_task_codes[["retro"]], "retro", rows, batch_size = batch_size, limit = limit, tags = list(stage = "retro"), ...),
     hessian = launch_rows_batched(flow_task_codes[["hessian"]], "hessian", rows, batch_size = batch_size, limit = limit, tags = list(stage = "hessian"), ...),
     likprof = launch_rows_batched(flow_task_codes[["likprof"]], "likprof", rows, batch_size = batch_size, limit = limit, tags = list(stage = "likprof"), ...),
-    plot = launch_rows_batched(flow_task_codes[["plot"]], "plot", rows, batch_size = batch_size, limit = limit, tags = list(stage = "plot"), ...),
-    report = launch_rows_batched(flow_task_codes[["report"]], "report", rows, batch_size = batch_size, limit = limit, tags = list(stage = "report"), ...)
+    outputs = launch_rows_batched(flow_task_codes[["outputs"]], flow_outputs_target_folder, rows, batch_size = batch_size, limit = limit, tags = list(stage = "outputs"), repo = flow_outputs_repo, branch = flow_outputs_ref, ...),
+    curation = launch_rows_batched(flow_task_codes[["curation"]], flow_curation_target_folder, rows, batch_size = batch_size, limit = limit, tags = list(stage = "curation"), repo = flow_curation_repo, branch = flow_curation_ref, ...),
+    draft = launch_rows_batched(flow_task_codes[["draft"]], flow_draft_target_folder, rows, batch_size = batch_size, limit = limit, tags = list(stage = "draft"), repo = flow_draft_task_repo, branch = flow_draft_task_ref, ...),
+    plot = launch_rows_batched(flow_task_codes[["outputs"]], flow_outputs_target_folder, rows, batch_size = batch_size, limit = limit, tags = list(stage = "outputs"), repo = flow_outputs_repo, branch = flow_outputs_ref, ...),
+    report = launch_rows_batched(flow_task_codes[["draft"]], flow_draft_target_folder, rows, batch_size = batch_size, limit = limit, tags = list(stage = "draft"), repo = flow_draft_task_repo, branch = flow_draft_task_ref, ...)
   )
 }
 
